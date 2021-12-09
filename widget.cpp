@@ -1,4 +1,5 @@
 #include "widget.h"
+#include "geometry.h"
 
 SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
     this->setParent(parent);
