@@ -11,6 +11,9 @@
 #include <QTime>
 #include <QDebug>
 
+#include "geometry.h"
+#include "model.h"
+
 class SoftRaster : public QWidget {
     Q_OBJECT
 

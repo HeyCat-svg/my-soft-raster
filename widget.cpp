@@ -1,5 +1,6 @@
 #include "widget.h"
-#include "geometry.h"
+
+Model africanHeadModel("./obj/african_head/african_head.obj");
 
 SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
     this->setParent(parent);
@@ -27,8 +28,25 @@ void SoftRaster::paintEvent(QPaintEvent*) {
     // clear image buffer with white
     memset(m_PixelBuffer, ~0, m_WindowWidth * m_WindowHeight * sizeof(QRgb));
 
-    // draw a line
-    Line(0, 0, 20, 500, (255 << 24) | (255 << 16));    // red
+//    // lesson 1: draw a line
+//    Line(0, 0, 20, 500, (255 << 24) | (255 << 16));    // red
+
+    // lesson 1.1: draw a model wireframe
+    QRgb color = (255 << 24) | (255) << 16;     // Red
+    int faceCount = africanHeadModel.nfaces();
+    for (int i = 0; i < faceCount; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            vec3 v0 = africanHeadModel.vert(i, j % 3);
+            vec3 v1 = africanHeadModel.vert(i, (j + 1) % 3);
+            Line(
+                0.5f * (v0.x + 1.0f) * m_WindowWidth,
+                0.5f * (-v0.y + 1.0f) * m_WindowHeight,     // inverse y
+                0.5f * (v1.x + 1.0f) * m_WindowWidth,
+                0.5f * (-v1.y + 1.0f) * m_WindowHeight,     // inverse y
+                color
+            );
+        }
+    }
 
     // draw image on window
     painter.drawImage(0, 0, image);

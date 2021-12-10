@@ -31,6 +31,10 @@ set(PROJECT_SOURCES
         main.cpp
         widget.cpp
         widget.h
+        model.cpp
+        model.h
+        tgaimage.cpp
+        tgaimage.h
         geometry.h
 )
 
