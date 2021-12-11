@@ -111,7 +111,8 @@ struct vec<3> {
 
 /////////////////////////////////////////////////////////////////////////////////
 
-template<int n> struct dt;
+template<int n>
+struct dt;
 
 template<int nrows, int ncols>
 struct mat {

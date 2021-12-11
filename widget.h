@@ -35,6 +35,9 @@ public:
     ~SoftRaster();
 
     void Line(int x1, int y1, int x2, int y2, QRgb color);  // Bresenham’s Line Drawing Algorithm
+    void Triangle(vec2* pts, QRgb color);                   // 使用重心坐标判断AABB包围盒内像素是否属于三角形内
+    vec3 Barycentric(vec2* pts, vec2 p);                    // pts[0]=A pts[1]=B pts[2]=C p=P
+
 };
 
 #endif // WIDGET_H

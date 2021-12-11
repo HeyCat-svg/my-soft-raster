@@ -35,6 +35,7 @@ set(PROJECT_SOURCES
         model.h
         tgaimage.cpp
         tgaimage.h
+        geometry.cpp
         geometry.h
 )
 

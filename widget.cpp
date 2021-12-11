@@ -31,22 +31,58 @@ void SoftRaster::paintEvent(QPaintEvent*) {
 //    // lesson 1: draw a line
 //    Line(0, 0, 20, 500, (255 << 24) | (255 << 16));    // red
 
-    // lesson 1.1: draw a model wireframe
-    QRgb color = (255 << 24) | (255) << 16;     // Red
-    int faceCount = africanHeadModel.nfaces();
-    for (int i = 0; i < faceCount; ++i) {
-        for (int j = 0; j < 3; ++j) {
-            vec3 v0 = africanHeadModel.vert(i, j % 3);
-            vec3 v1 = africanHeadModel.vert(i, (j + 1) % 3);
-            Line(
-                0.5f * (v0.x + 1.0f) * m_WindowWidth,
-                0.5f * (-v0.y + 1.0f) * m_WindowHeight,     // inverse y
-                0.5f * (v1.x + 1.0f) * m_WindowWidth,
-                0.5f * (-v1.y + 1.0f) * m_WindowHeight,     // inverse y
-                color
-            );
+//    // lesson 1.1: draw a model wireframe
+//    QRgb color = (255 << 24) | (255 << 16);     // Red
+//    int faceCount = africanHeadModel.nfaces();
+//    for (int i = 0; i < faceCount; ++i) {
+//        for (int j = 0; j < 3; ++j) {
+//            vec3 v0 = africanHeadModel.vert(i, j % 3);
+//            vec3 v1 = africanHeadModel.vert(i, (j + 1) % 3);
+//            Line(
+//                0.5f * (v0.x + 1.0f) * m_WindowWidth,
+//                0.5f * (-v0.y + 1.0f) * m_WindowHeight,     // inverse y
+//                0.5f * (v1.x + 1.0f) * m_WindowWidth,
+//                0.5f * (-v1.y + 1.0f) * m_WindowHeight,     // inverse y
+//                color
+//            );
+//        }
+//    }
+
+//    // lesson 2: draw a triangle
+//    vec2 pts[3];
+//    pts[0] = vec2(0, 0);
+//    pts[1] = vec2(300, 100);
+//    pts[2] = vec2(100, 300);
+//    Triangle(pts, (255 << 24) | (255 << 16));
+
+    // lesson 2.1: draw model with simple light
+    QRgb bgColor = 255 << 24;
+    for (int i = 0; i < m_WindowHeight; ++i) {
+        for (int j = 0; j < m_WindowWidth; ++j) {
+            m_PixelBuffer[i * m_WindowWidth + j] = bgColor;
         }
     }
+    vec3 pts[3];
+    int faceCount = africanHeadModel.nfaces();
+    for (int i = 0; i < faceCount; ++i) {
+        pts[0] = africanHeadModel.vert(i, 0);
+        pts[1] = africanHeadModel.vert(i, 1);
+        pts[2] = africanHeadModel.vert(i, 2);
+
+        vec3 n = cross(pts[1] - pts[0], pts[2] - pts[0]).normalize();
+        float intensity = n * vec3(0, 0, 1);
+        // clip when primitive on back
+        if (intensity < 0) {
+            continue;
+        }
+        vec2 pts2D[3] = {
+            0.5f * vec2((pts[0].x + 1) * m_WindowWidth, (-pts[0].y + 1) * m_WindowHeight),
+            0.5f * vec2((pts[1].x + 1) * m_WindowWidth, (-pts[1].y + 1) * m_WindowHeight),
+            0.5f * vec2((pts[2].x + 1) * m_WindowWidth, (-pts[2].y + 1) * m_WindowHeight)
+        };
+        Triangle(pts2D, 255 << 24 | ((uint8_t)(255 * intensity) << 16) | ((uint8_t)(255 * intensity) << 8) | (uint8_t)(255 * intensity));
+    }
+
 
     // draw image on window
     painter.drawImage(0, 0, image);
@@ -105,6 +141,46 @@ void SoftRaster::Line(int x1, int y1, int x2, int y2, QRgb color) {
             }
         }
     }
+}
+
+
+void SoftRaster::Triangle(vec2 *pts, QRgb color) {
+    vec2 boundBoxMin = vec2(m_WindowWidth - 1, m_WindowHeight - 1);
+    vec2 boundBoxMax = vec2(0, 0);
+
+    for (int i = 0; i < 3; ++i) {
+        boundBoxMin.x = std::max(0.f, std::min(pts[i].x, boundBoxMin.x));
+        boundBoxMin.y = std::max(0.f, std::min(pts[i].y, boundBoxMin.y));
+
+        boundBoxMax.x = std::min(m_WindowWidth - 1.f, std::max(pts[i].x, boundBoxMax.x));
+        boundBoxMax.y = std::min(m_WindowHeight - 1.f, std::max(pts[i].y, boundBoxMax.y));
+    }
+
+    for (int y = boundBoxMin.y; y <= boundBoxMax.y; ++y) {
+        for (int x = boundBoxMin.x; x <= boundBoxMax.x; ++x) {
+            vec3 barycentric = Barycentric(pts, vec2(x, y));
+            if (barycentric.x < 0.f || barycentric.y < 0.f || barycentric.z < 0.f) {
+                continue;
+            }
+            m_PixelBuffer[x + y * m_WindowWidth] = color;
+        }
+    }
+}
+
+
+// 解重心坐标 u*AB + v*AC + PA = 0
+vec3 SoftRaster::Barycentric(vec2 *pts, vec2 p) {
+    vec3 ret = cross(
+        vec3(pts[1].x - pts[0].x, pts[2].x - pts[0].x, pts[0].x - p.x),
+        vec3(pts[1].y - pts[0].y, pts[2].y - pts[0].y, pts[0].y - p.y)
+    );
+
+    // 整数坐标输入 cross后应该也是整数 abs(ret.z)<1意味着ret[2]是0 即输入三角形退化成线段或点
+    if (std::abs(ret.z) < 1.f) {
+        return vec3(-1.f, 1.f, 1.f);
+    }
+    // (ret.x + ret.y) / ret.z 先+后x 增加精度 避免在BC边上像素漏画
+    return vec3(1.f - (ret.x + ret.y) / ret.z, ret.x / ret.z, ret.y / ret.z);
 }
 
 
