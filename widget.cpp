@@ -10,6 +10,14 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
     // init pixel buffer
     m_PixelBuffer = new QRgb[m_WindowWidth * m_WindowHeight];
 
+    // init zbuffer
+    m_Zbuffer = new float[m_WindowWidth * m_WindowHeight];
+    for (int i = 0; i < m_WindowHeight; ++i) {
+        for (int j = 0; j < m_WindowWidth; ++j) {
+            m_Zbuffer[i * m_WindowWidth + j] = Z_MIN;
+        }
+    }
+
     // start repaint timer
     m_RepaintTimer = startTimer(m_RepaintInterval);
 }
@@ -18,6 +26,7 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
 SoftRaster::~SoftRaster() {
     killTimer(m_RepaintTimer);
     delete[] m_PixelBuffer;
+    delete[] m_Zbuffer;
 }
 
 
@@ -55,11 +64,12 @@ void SoftRaster::paintEvent(QPaintEvent*) {
 //    pts[2] = vec2(100, 300);
 //    Triangle(pts, (255 << 24) | (255 << 16));
 
-    // lesson 2.1: draw model with simple light
+    // lesson 2.1 & 3: draw model with simple light and use zbuffer
     QRgb bgColor = 255 << 24;
     for (int i = 0; i < m_WindowHeight; ++i) {
         for (int j = 0; j < m_WindowWidth; ++j) {
             m_PixelBuffer[i * m_WindowWidth + j] = bgColor;
+            m_Zbuffer[i * m_WindowWidth + j] = Z_MIN;
         }
     }
     vec3 pts[3];
@@ -75,10 +85,11 @@ void SoftRaster::paintEvent(QPaintEvent*) {
         if (intensity < 0) {
             continue;
         }
-        vec2 pts2D[3] = {
-            0.5f * vec2((pts[0].x + 1) * m_WindowWidth, (-pts[0].y + 1) * m_WindowHeight),
-            0.5f * vec2((pts[1].x + 1) * m_WindowWidth, (-pts[1].y + 1) * m_WindowHeight),
-            0.5f * vec2((pts[2].x + 1) * m_WindowWidth, (-pts[2].y + 1) * m_WindowHeight)
+        // 转换为屏幕坐标 z值为深度
+        vec3 pts2D[3] = {
+            0.5f * vec3((pts[0].x + 1) * m_WindowWidth, (-pts[0].y + 1) * m_WindowHeight, pts[0].z),
+            0.5f * vec3((pts[1].x + 1) * m_WindowWidth, (-pts[1].y + 1) * m_WindowHeight, pts[1].z),
+            0.5f * vec3((pts[2].x + 1) * m_WindowWidth, (-pts[2].y + 1) * m_WindowHeight, pts[2].z)
         };
         Triangle(pts2D, 255 << 24 | ((uint8_t)(255 * intensity) << 16) | ((uint8_t)(255 * intensity) << 8) | (uint8_t)(255 * intensity));
     }
@@ -162,7 +173,40 @@ void SoftRaster::Triangle(vec2 *pts, QRgb color) {
             if (barycentric.x < 0.f || barycentric.y < 0.f || barycentric.z < 0.f) {
                 continue;
             }
+
             m_PixelBuffer[x + y * m_WindowWidth] = color;
+        }
+    }
+}
+
+
+void SoftRaster::Triangle(vec3 *pts, QRgb color) {
+    vec2 boundBoxMin = vec2(m_WindowWidth - 1, m_WindowHeight - 1);
+    vec2 boundBoxMax = vec2(0, 0);
+
+    for (int i = 0; i < 3; ++i) {
+        boundBoxMin.x = std::max(0.f, std::min(pts[i].x, boundBoxMin.x));
+        boundBoxMin.y = std::max(0.f, std::min(pts[i].y, boundBoxMin.y));
+
+        boundBoxMax.x = std::min(m_WindowWidth - 1.f, std::max(pts[i].x, boundBoxMax.x));
+        boundBoxMax.y = std::min(m_WindowHeight - 1.f, std::max(pts[i].y, boundBoxMax.y));
+    }
+
+    for (int y = boundBoxMin.y; y <= boundBoxMax.y; ++y) {
+        for (int x = boundBoxMin.x; x <= boundBoxMax.x; ++x) {
+            vec2 screenCoords[3] = {vec2(pts[0].x, pts[0].y),
+                                    vec2(pts[1].x, pts[1].y),
+                                    vec2(pts[2].x, pts[2].y)};
+            vec3 barycentric = Barycentric(screenCoords, vec2(x, y));
+            if (barycentric.x < 0.f || barycentric.y < 0.f || barycentric.z < 0.f) {
+                continue;
+            }
+            float depth = barycentric.x * pts[0].z + barycentric.y * pts[1].z + barycentric.z * pts[2].z;
+            // 深度测试 z从里到外增大
+            if (depth > m_Zbuffer[x + y * m_WindowWidth]) {
+                m_Zbuffer[x + y * m_WindowWidth] = depth;
+                m_PixelBuffer[x + y * m_WindowWidth] = color;
+            }
         }
     }
 }
