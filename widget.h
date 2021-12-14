@@ -13,6 +13,7 @@
 
 #include "geometry.h"
 #include "model.h"
+#include "shader.h"
 
 class SoftRaster : public QWidget {
     Q_OBJECT

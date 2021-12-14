@@ -32,6 +32,7 @@ set(PROJECT_SOURCES
         widget.cpp
         widget.h
         shader.h
+        shader.cpp
         model.cpp
         model.h
         tgaimage.cpp

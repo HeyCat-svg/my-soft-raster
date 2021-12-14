@@ -6,6 +6,8 @@
 #include <cassert>
 #include <iostream>
 
+#define PI 3.1415926535897932f
+
 template<int n>
 struct vec {
   vec() = default;
@@ -111,8 +113,25 @@ struct vec<3> {
 
 /////////////////////////////////////////////////////////////////////////////////
 
+template<>
+struct vec<4> {
+    vec() = default;
+    vec(float X, float Y, float Z, float W) : x(X), y(Y), z(Z), w(W) {}
+    float& operator[](const int i) {assert(i >= 0 && i < 4); return i == 0 ? x : (1 == i ? y : (2 == i ? z : w));}
+    float operator[](const int i) const {assert(i >= 0 && i < 4); return i == 0 ? x : (1 == i ? y : (2 == i ? z : w));}
+    float norm2() const {return (*this) * (*this);}
+    float norm() const {return std::sqrt(norm2());}
+    vec& normalize() {*this = (*this) / norm(); return *this;}
+
+    float x{}, y{}, z{}, w{};
+};
+
+/////////////////////////////////////////////////////////////////////////////////
+
 template<int n>
 struct dt;
+
+struct Quaternion;
 
 template<int nrows, int ncols>
 struct mat {
@@ -244,7 +263,7 @@ std::ostream& operator<<(std::ostream& out, const mat<nrows,ncols>& m) {
 template<int n>
 struct dt {
     // 求矩阵对应的行列式值
-    static double det(const mat<n, n>& src) {
+    static float det(const mat<n, n>& src) {
         float ret = 0;
         for (int i = n; i--; ret += src[0][i] * src.cofactor(0,i));
         return ret;
@@ -261,9 +280,67 @@ struct dt<1> {
 
 /////////////////////////////////////////////////////////////////////////////////
 
+Quaternion operator*(const Quaternion& lhs, const Quaternion& rhs);
+
+struct Quaternion {
+    Quaternion() = default;
+    Quaternion(const vec<3>& _v, float _s) : v(_v), s(_s) {}
+    Quaternion(const vec<3>& rotation) {
+        // y rotation
+        Quaternion yaw(std::sin(0.5f * rotation.y) * vec<3>(0, 1, 0), std::cos(0.5f * rotation.y));
+        // x rotation
+        Quaternion pitch(std::sin(0.5f * rotation.x) * vec<3>(1, 0, 0), std::cos(0.5f * rotation.x));
+        // z rotation
+        Quaternion roll(std::sin(0.5f * rotation.z) * vec<3>(0, 0, 1), std::cos(0.5f * rotation.z));
+
+        (*this) = roll * pitch * yaw;
+    }
+    float norm2() const {return v.norm2() + s * s;}
+    float norm() const {return std::sqrt(norm2());}
+    Quaternion& normalize() {
+        float len = norm();
+        v = v / len;
+        s /= len;
+        return *this;
+    }
+
+    mat<4, 4> ToMatrix() {
+        mat<4, 4> ret;
+        ret[0] = vec<4>(1.f - 2.f * v.y * v.y - 2.f * v.z * v.z,
+                        2.f * v.x * v.y - 2.f * v.z * s,
+                        2.f * v.x * v.z + 2.f * v.y * s,
+                        0.f);
+        ret[1] = vec<4>(2.f * v.x * v.y + 2.f * v.z * s,
+                        1.f - 2.f * v.x * v.x - 2.f * v.z * v.z,
+                        2.f * v.y * v.z - 2.f * v.x * s,
+                        0.f);
+        ret[2] = vec<4>(2.f * v.x * v.y - 2.f * v.y * s,
+                        2.f * v.y * v.z + 2.f * v.x * s,
+                        1.f - 2.f * v.x * v.x - 2.f * v.y * v.y,
+                        0.f);
+        ret[3] = vec<4>(0, 0, 0, 1);
+        return ret;
+    }
+
+    vec<3> v;     // 矢量部分
+    float s;    // 标量部分
+};
+
+/////////////////////////////////////////////////////////////////////////////////
+
 typedef vec<2> vec2;
 typedef vec<3> vec3;
 typedef vec<4> vec4;
+typedef mat<4, 4> mat4x4;
+enum ProjectionType {ORTH, PERSP};
+
 vec3 cross(const vec3& v1, const vec3& v2);
+mat4x4 TRS(vec3& translate, vec3& rotation, vec3& scale);   // 构造MODEL_MATRIX
+mat4x4 LookAt(vec3& dir, vec3& up);
+mat4x4 Projection(ProjectionType type, float znear, float zfar, float top, float down, float left, float right);
+mat4x4 PerspProjection(float fov, float aspect, float znear, float zfar); // fov: 竖直方向全角
+
+/////////////////////////////////////////////////////////////////////////////////
+
 
 #endif // GEOMETRY_H
