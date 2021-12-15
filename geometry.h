@@ -76,6 +76,13 @@ vec<n1> proj(const vec<n2> &v) {
 }
 
 template<int n>
+vec<n> mul(const vec<n>& lhs, const vec<n>& rhs) {
+    vec<n> ret = lhs;
+    for (int i = n; i--; ret[i] *= rhs[i]);
+    return ret;
+}
+
+template<int n>
 std::ostream& operator<<(std::ostream& out, const vec<n>& v) {
     for (int i = 0; i < n; ++i) out << v[i] << " ";
     return out;

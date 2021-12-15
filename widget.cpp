@@ -18,6 +18,13 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
         }
     }
 
+    // set shader env
+    vec3 translate(0, 0, 0);
+    vec3 rotation(0, 0, 0);
+    vec3 scale(1, 1, 1);
+    SetModelMatrix(TRS(translate, rotation, scale));
+
+
     // start repaint timer
     m_RepaintTimer = startTimer(m_RepaintInterval);
 }
@@ -64,7 +71,6 @@ void SoftRaster::paintEvent(QPaintEvent*) {
 //    pts[2] = vec2(100, 300);
 //    Triangle(pts, (255 << 24) | (255 << 16));
 
-    // lesson 2.1 & 3: draw model with simple light and use zbuffer
     QRgb bgColor = 255 << 24;
     for (int i = 0; i < m_WindowHeight; ++i) {
         for (int j = 0; j < m_WindowWidth; ++j) {
