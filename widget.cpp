@@ -22,8 +22,26 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
     vec3 translate(0, 0, 0);
     vec3 rotation(0, 0, 0);
     vec3 scale(1, 1, 1);
-    SetModelMatrix(TRS(translate, rotation, scale));
+    mat4x4 model = TRS(translate, rotation, scale);
+    SetModelMatrix(model);
 
+    vec3 lookDir(0, 0, -1);
+    vec3 worldUp(0, 1, 0);
+    vec3 cameraPos(0, 0, 2);
+    mat4x4 lookAt = LookAt(lookDir, worldUp);
+    SetViewMatrix(cameraPos, lookAt);
+
+    mat4x4 proj = PerspProjection(PI / 3.f, 1.f, 0.3f, 10.f);
+    SetProjectionMatrix(proj);
+
+    vec4 light(1, 1, 1, 1);
+    SetCameraAndLight(cameraPos, light);
+
+    TGAImage* diffuseImg = new TGAImage();
+    diffuseImg->read_tga_file("./obj/african_head/african_head_diffuse.tga");
+    diffuseImg->flip_vertically();      // 垂直反转让uv取到正确的值
+    m_Shader = new GeneralShader();
+    ((GeneralShader*)m_Shader)->SetResource(&africanHeadModel, diffuseImg);
 
     // start repaint timer
     m_RepaintTimer = startTimer(m_RepaintInterval);
@@ -41,36 +59,7 @@ void SoftRaster::paintEvent(QPaintEvent*) {
     QPainter painter(this);
     QImage image((uchar*)m_PixelBuffer, m_WindowWidth, m_WindowHeight, QImage::Format_ARGB32);
 
-    // clear image buffer with white
-    memset(m_PixelBuffer, ~0, m_WindowWidth * m_WindowHeight * sizeof(QRgb));
-
-//    // lesson 1: draw a line
-//    Line(0, 0, 20, 500, (255 << 24) | (255 << 16));    // red
-
-//    // lesson 1.1: draw a model wireframe
-//    QRgb color = (255 << 24) | (255 << 16);     // Red
-//    int faceCount = africanHeadModel.nfaces();
-//    for (int i = 0; i < faceCount; ++i) {
-//        for (int j = 0; j < 3; ++j) {
-//            vec3 v0 = africanHeadModel.vert(i, j % 3);
-//            vec3 v1 = africanHeadModel.vert(i, (j + 1) % 3);
-//            Line(
-//                0.5f * (v0.x + 1.0f) * m_WindowWidth,
-//                0.5f * (-v0.y + 1.0f) * m_WindowHeight,     // inverse y
-//                0.5f * (v1.x + 1.0f) * m_WindowWidth,
-//                0.5f * (-v1.y + 1.0f) * m_WindowHeight,     // inverse y
-//                color
-//            );
-//        }
-//    }
-
-//    // lesson 2: draw a triangle
-//    vec2 pts[3];
-//    pts[0] = vec2(0, 0);
-//    pts[1] = vec2(300, 100);
-//    pts[2] = vec2(100, 300);
-//    Triangle(pts, (255 << 24) | (255 << 16));
-
+    // clear image with black and clear depth buffer
     QRgb bgColor = 255 << 24;
     for (int i = 0; i < m_WindowHeight; ++i) {
         for (int j = 0; j < m_WindowWidth; ++j) {
@@ -78,28 +67,15 @@ void SoftRaster::paintEvent(QPaintEvent*) {
             m_Zbuffer[i * m_WindowWidth + j] = Z_MIN;
         }
     }
-    vec3 pts[3];
+
     int faceCount = africanHeadModel.nfaces();
     for (int i = 0; i < faceCount; ++i) {
-        pts[0] = africanHeadModel.vert(i, 0);
-        pts[1] = africanHeadModel.vert(i, 1);
-        pts[2] = africanHeadModel.vert(i, 2);
-
-        vec3 n = cross(pts[1] - pts[0], pts[2] - pts[0]).normalize();
-        float intensity = n * vec3(0, 0, 1);
-        // clip when primitive on back
-        if (intensity < 0) {
-            continue;
+        vec4 clipPts[3];
+        for (int j = 0; j < 3; ++j) {
+            clipPts[j] = m_Shader->Vertex(i, j);
         }
-        // 转换为屏幕坐标 z值为深度
-        vec3 pts2D[3] = {
-            0.5f * vec3((pts[0].x + 1) * m_WindowWidth, (-pts[0].y + 1) * m_WindowHeight, pts[0].z),
-            0.5f * vec3((pts[1].x + 1) * m_WindowWidth, (-pts[1].y + 1) * m_WindowHeight, pts[1].z),
-            0.5f * vec3((pts[2].x + 1) * m_WindowWidth, (-pts[2].y + 1) * m_WindowHeight, pts[2].z)
-        };
-        Triangle(pts2D, 255 << 24 | ((uint8_t)(255 * intensity) << 16) | ((uint8_t)(255 * intensity) << 8) | (uint8_t)(255 * intensity));
+        Triangle(clipPts, m_Shader);
     }
-
 
     // draw image on window
     painter.drawImage(0, 0, image);
@@ -161,56 +137,42 @@ void SoftRaster::Line(int x1, int y1, int x2, int y2, QRgb color) {
 }
 
 
-void SoftRaster::Triangle(vec2 *pts, QRgb color) {
+void SoftRaster::Triangle(vec4 *clipPts, IShader* shader) {
+    vec2 screenPts[3] = {
+        vec2((0.5f * (clipPts[0].x / clipPts[0].w) + 0.5f) * m_WindowWidth, (0.5f * (clipPts[0].y / clipPts[0].w) + 0.5f) * m_WindowHeight),
+        vec2((0.5f * (clipPts[1].x / clipPts[1].w) + 0.5f) * m_WindowWidth, (0.5f * (clipPts[1].y / clipPts[1].w) + 0.5f) * m_WindowHeight),
+        vec2((0.5f * (clipPts[2].x / clipPts[2].w) + 0.5f) * m_WindowWidth, (0.5f * (clipPts[2].y / clipPts[2].w) + 0.5f) * m_WindowHeight)
+    };
+
     vec2 boundBoxMin = vec2(m_WindowWidth - 1, m_WindowHeight - 1);
     vec2 boundBoxMax = vec2(0, 0);
 
     for (int i = 0; i < 3; ++i) {
-        boundBoxMin.x = std::max(0.f, std::min(pts[i].x, boundBoxMin.x));
-        boundBoxMin.y = std::max(0.f, std::min(pts[i].y, boundBoxMin.y));
+        boundBoxMin.x = std::max(0.f, std::min(screenPts[i].x, boundBoxMin.x));
+        boundBoxMin.y = std::max(0.f, std::min(screenPts[i].y, boundBoxMin.y));
 
-        boundBoxMax.x = std::min(m_WindowWidth - 1.f, std::max(pts[i].x, boundBoxMax.x));
-        boundBoxMax.y = std::min(m_WindowHeight - 1.f, std::max(pts[i].y, boundBoxMax.y));
+        boundBoxMax.x = std::min(m_WindowWidth - 1.f, std::max(screenPts[i].x, boundBoxMax.x));
+        boundBoxMax.y = std::min(m_WindowHeight - 1.f, std::max(screenPts[i].y, boundBoxMax.y));
     }
 
     for (int y = boundBoxMin.y; y <= boundBoxMax.y; ++y) {
         for (int x = boundBoxMin.x; x <= boundBoxMax.x; ++x) {
-            vec3 barycentric = Barycentric(pts, vec2(x, y));
-            if (barycentric.x < 0.f || barycentric.y < 0.f || barycentric.z < 0.f) {
+            vec3 screenBar = Barycentric(screenPts, vec2(x, y));    // 屏幕空间重心坐标
+            if (screenBar.x < 0.f || screenBar.y < 0.f || screenBar.z < 0.f) {
                 continue;
             }
-
-            m_PixelBuffer[x + y * m_WindowWidth] = color;
-        }
-    }
-}
-
-
-void SoftRaster::Triangle(vec3 *pts, QRgb color) {
-    vec2 boundBoxMin = vec2(m_WindowWidth - 1, m_WindowHeight - 1);
-    vec2 boundBoxMax = vec2(0, 0);
-
-    for (int i = 0; i < 3; ++i) {
-        boundBoxMin.x = std::max(0.f, std::min(pts[i].x, boundBoxMin.x));
-        boundBoxMin.y = std::max(0.f, std::min(pts[i].y, boundBoxMin.y));
-
-        boundBoxMax.x = std::min(m_WindowWidth - 1.f, std::max(pts[i].x, boundBoxMax.x));
-        boundBoxMax.y = std::min(m_WindowHeight - 1.f, std::max(pts[i].y, boundBoxMax.y));
-    }
-
-    for (int y = boundBoxMin.y; y <= boundBoxMax.y; ++y) {
-        for (int x = boundBoxMin.x; x <= boundBoxMax.x; ++x) {
-            vec2 screenCoords[3] = {vec2(pts[0].x, pts[0].y),
-                                    vec2(pts[1].x, pts[1].y),
-                                    vec2(pts[2].x, pts[2].y)};
-            vec3 barycentric = Barycentric(screenCoords, vec2(x, y));
-            if (barycentric.x < 0.f || barycentric.y < 0.f || barycentric.z < 0.f) {
+            // 计算实际空间的重心坐标 透视矫正 1/zt = a*1/z1 + b*1/z2 + c*1/z3  It/zt = a*I1/z1 + b*I2/z2 + c*I3/z3 然后view->proj后w分量是z值
+            vec3 clipBar = vec3(screenBar.x / clipPts[0].w, screenBar.y / clipPts[1].w, screenBar.z / clipPts[2].w);
+            clipBar = clipBar / (clipBar.x + clipBar.y + clipBar.z);
+            float depth = clipBar.x * clipPts[0].z / clipPts[0].w  + clipBar.y * clipPts[1].z / clipPts[1].w + clipBar.z * clipPts[2].z / clipPts[2].w;
+            // 深度测试 z从里到外增大 [far, near]->[0, 1]
+            if (depth < m_Zbuffer[x + y * m_WindowWidth]) {
                 continue;
             }
-            float depth = barycentric.x * pts[0].z + barycentric.y * pts[1].z + barycentric.z * pts[2].z;
-            // 深度测试 z从里到外增大
-            if (depth > m_Zbuffer[x + y * m_WindowWidth]) {
-                m_Zbuffer[x + y * m_WindowWidth] = depth;
+            m_Zbuffer[x + y * m_WindowWidth] = depth;
+            QRgb color;
+            bool shouldDraw = shader->Fragment(clipBar, color);
+            if (shouldDraw) {
                 m_PixelBuffer[x + y * m_WindowWidth] = color;
             }
         }

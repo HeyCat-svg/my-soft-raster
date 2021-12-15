@@ -16,20 +16,21 @@ extern mat4x4 VP_MATRIX;                            // proj * view
 extern vec4 LIGHT0;                                 // 向量或位置 区别在于w分量1or0
 extern vec3 CAMERA_POS;
 
-void SetModelMatrix(mat4x4 mat);
-void SetViewMatrix(mat4x4 mat);
-void SetProjectionMatrix(mat4x4 mat);
+void SetModelMatrix(mat4x4& mat);
+void SetViewMatrix(mat4x4& mat);
+void SetViewMatrix(vec3& cameraPos, mat4x4& lookAtMat);
+void SetProjectionMatrix(mat4x4& mat);
 void SetCameraAndLight(vec3& cameraPos, vec4& light);
 vec3 NormalObjectToWorld(const vec3& n);
 vec3 Reflect(const vec3& inLightDir, const vec3& normal);
-inline float clamp01(float v);
+float clamp01(float v);
 
 /////////////////////////////////////////////////////////////////////////////////
 
 class IShader {
 public:
     virtual ~IShader() {};
-    virtual vec3 Vertex(int iface, int nthvert) = 0;
+    virtual vec4 Vertex(int iface, int nthvert) = 0;
     virtual bool Fragment(vec3 barycentric, QRgb& outColor) = 0;
 };
 
@@ -48,7 +49,12 @@ class GeneralShader : public IShader {
     v2f vertOutput[3];
 
  public:
-    virtual vec3 Vertex(int iface, int nthvert) override {
+    virtual ~GeneralShader() {
+        delete diffuseTexture;
+        delete model;
+    };
+
+    virtual vec4 Vertex(int iface, int nthvert) override {
         v2f o;
         o.normal = NormalObjectToWorld(model->normal(iface, nthvert)).normalize();
         o.uv = model->uv(iface, nthvert);
@@ -56,7 +62,7 @@ class GeneralShader : public IShader {
         o.worldPos = proj<3>(worldPos);
         vertOutput[nthvert] = o;
 
-        return embed<3>(VP_MATRIX * worldPos);
+        return VP_MATRIX * worldPos;
     }
 
     virtual bool Fragment(vec3 barycentric, QRgb& outColor) override {
@@ -75,13 +81,13 @@ class GeneralShader : public IShader {
         vec3 lightDir = (LIGHT0.w == 0) ? embed<3>(LIGHT0) : (embed<3>(LIGHT0) - worldPos).normalize();
         vec3 viewDir = (CAMERA_POS - worldPos).normalize();
         vec3 halfDir = (lightDir + viewDir).normalize();
-        // 图片采样是以图片左上角为原点 需要reverse y
-        TGAColor rawAlbedo = diffuseTexture->get(uv.x * diffuseWidth, (1.f - uv.y) * diffuseHeight);
+        // 图片加载已经经过y反转 不需要reverse y
+        TGAColor rawAlbedo = diffuseTexture->get(uv.x * diffuseWidth, uv.y * diffuseHeight);
         vec4 albedo = {rawAlbedo[2] / 255.f, rawAlbedo[1] / 255.f, rawAlbedo[0] / 255.f, rawAlbedo[3] / 255.f};
-        float ambient = 0.1f;
+        float ambient = 0.2f;
         float diff = clamp01(worldNormal * lightDir);
         float spec = std::powf(clamp01(halfDir * worldNormal), 16);
-        vec3 col = (ambient + diff + spec) * mul(lightColor, proj<3>(albedo));
+        vec3 col = clamp01(ambient + diff + spec) * mul(lightColor, proj<3>(albedo));
         col = col * 255.f;
         outColor = (255 << 24) | ((uint8_t)col[0] << 16) | ((uint8_t)col[1] << 8) | ((uint8_t)col[2]);
         return true;

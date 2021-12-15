@@ -23,12 +23,24 @@ void SetViewMatrix(mat4x4& mat) {
     VIEW_MATRIX = mat;
 }
 
+void SetViewMatrix(vec3& cameraPos, mat4x4& lookAtMat) {
+    mat4x4 translateMat = mat4x4::identity();
+    translateMat[0][3] = -cameraPos.x;
+    translateMat[1][3] = -cameraPos.y;
+    translateMat[2][3] = -cameraPos.z;
+
+    // 先将相机坐标系平移到原点 然后旋转
+    mat4x4 view = lookAtMat * translateMat;
+    SetViewMatrix(view);
+}
+
 void SetProjectionMatrix(mat4x4& mat) {
     static mat4x4 projPrefix = mat4x4::identity();
     static bool isPrefixInit = false;
 
     // opengl范式的投影矩阵[znear, zfar]->[-1, 1] 更改映射[znear, zfar]->[1, 0]
     if (!isPrefixInit) {
+        projPrefix[1][1] = -1.f;    // reverse Y 因为屏幕坐标是以左上角为原点
         projPrefix[2][2] = -0.5f;
         projPrefix[2][3] = 0.5f;
         isPrefixInit = true;
@@ -56,6 +68,6 @@ vec3 Reflect(const vec3& inLightDir, const vec3& normal) {
     return 2.f * (inLightDir * normal) * normal - inLightDir;
 }
 
-inline float clamp01(float v) {
+float clamp01(float v) {
     return (v > 1.f) ? 1.f : ((v < 0.f) ? 0.f : v);
 }

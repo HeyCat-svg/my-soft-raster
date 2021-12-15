@@ -27,8 +27,10 @@ private:
     QRgb* m_PixelBuffer = nullptr;  // 像素缓冲
     float* m_Zbuffer = nullptr;
 
-    int m_RepaintInterval = 100;    // ms
+    int m_RepaintInterval = 5000;    // ms
     int m_RepaintTimer;
+
+    IShader* m_Shader;
 
 protected:
     virtual void paintEvent(QPaintEvent*) override;
@@ -39,8 +41,7 @@ public:
     ~SoftRaster();
 
     void Line(int x1, int y1, int x2, int y2, QRgb color);  // Bresenham’s Line Drawing Algorithm
-    void Triangle(vec2* pts, QRgb color);                   // 无深度测试 使用重心坐标判断AABB包围盒内像素是否属于三角形内
-    void Triangle(vec3* pts, QRgb color);                   // 有深度测试 pts.xy是屏幕坐标 pts.z是深度
+    void Triangle(vec4* clipPts, IShader* shader);                   // 有深度测试 pts.xy是屏幕坐标 pts.z是深度
     vec3 Barycentric(vec2* pts, vec2 p);                    // pts[0]=A pts[1]=B pts[2]=C p=P
 
 };
