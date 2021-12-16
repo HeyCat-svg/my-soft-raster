@@ -21,5 +21,5 @@
 
 - 其他technique point想到再写
 
-!()[https://github.com/HeyCat-svg/my-soft-raster/blob/92d415880f759543f294c9a8ca4416ac91f5b8c9/img/Snipaste_2021-12-16_11-55-35.png]
+![](https://github.com/HeyCat-svg/my-soft-raster/blob/92d415880f759543f294c9a8ca4416ac91f5b8c9/img/Snipaste_2021-12-16_11-55-35.png)
 
