@@ -86,11 +86,11 @@ class GeneralShader : public IShader {
         vec4 albedo = {rawAlbedo[2] / 255.f, rawAlbedo[1] / 255.f, rawAlbedo[0] / 255.f, rawAlbedo[3] / 255.f};
         float ambient = 0.2f;
         float diff = clamp01(worldNormal * lightDir);
-        float spec = std::powf(clamp01(halfDir * worldNormal), 16);
+        float spec = std::pow(clamp01(halfDir * worldNormal), 16);
         vec3 col = clamp01(ambient + diff + spec) * mul(lightColor, proj<3>(albedo));
         col = col * 255.f;
         outColor = (255 << 24) | ((uint8_t)col[0] << 16) | ((uint8_t)col[1] << 8) | ((uint8_t)col[2]);
-        return true;
+        return false;
     }
 
     void SetResource(Model* _model, TGAImage* _diffuseTexture, vec3 _lightColor = {1, 1, 1}, float _specStrength = 1.f) {

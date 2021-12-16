@@ -11,6 +11,7 @@
 #include <QTime>
 #include <QDebug>
 
+#include <windows.h>
 #include "geometry.h"
 #include "model.h"
 #include "shader.h"

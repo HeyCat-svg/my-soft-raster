@@ -21,13 +21,13 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
     // set shader env
     vec3 translate(0, 0, 0);
     vec3 rotation(0, 0, 0);
-    vec3 scale(1, 1, 1);
+    vec3 scale(1.2, 1.2, 1.2);
     mat4x4 model = TRS(translate, rotation, scale);
     SetModelMatrix(model);
 
-    vec3 lookDir(0, 0, -1);
     vec3 worldUp(0, 1, 0);
-    vec3 cameraPos(0, 0, 2);
+    vec3 cameraPos(1.f, 1.f, 2.f);
+    vec3 lookDir = vec3(0, 0, 0) - cameraPos;
     mat4x4 lookAt = LookAt(lookDir, worldUp);
     SetViewMatrix(cameraPos, lookAt);
 
@@ -59,8 +59,16 @@ void SoftRaster::paintEvent(QPaintEvent*) {
     QPainter painter(this);
     QImage image((uchar*)m_PixelBuffer, m_WindowWidth, m_WindowHeight, QImage::Format_ARGB32);
 
+    LARGE_INTEGER cpuFreq;
+    LARGE_INTEGER startTime;
+    LARGE_INTEGER endTime;
+    double runtime = 0.0;
+    QueryPerformanceFrequency(&cpuFreq);
+    QueryPerformanceCounter(&startTime);
+
     // clear image with black and clear depth buffer
     QRgb bgColor = 255 << 24;
+#pragma omp parallel for
     for (int i = 0; i < m_WindowHeight; ++i) {
         for (int j = 0; j < m_WindowWidth; ++j) {
             m_PixelBuffer[i * m_WindowWidth + j] = bgColor;
@@ -79,6 +87,10 @@ void SoftRaster::paintEvent(QPaintEvent*) {
 
     // draw image on window
     painter.drawImage(0, 0, image);
+
+    QueryPerformanceCounter(&endTime);
+    runtime = (((endTime.QuadPart - startTime.QuadPart) * 1000.0f) / cpuFreq.QuadPart);
+    qDebug() << "runtime: " << runtime << "ms";
 }
 
 
@@ -155,8 +167,9 @@ void SoftRaster::Triangle(vec4 *clipPts, IShader* shader) {
         boundBoxMax.y = std::min(m_WindowHeight - 1.f, std::max(screenPts[i].y, boundBoxMax.y));
     }
 
-    for (int y = boundBoxMin.y; y <= boundBoxMax.y; ++y) {
-        for (int x = boundBoxMin.x; x <= boundBoxMax.x; ++x) {
+#pragma omp parallel for
+    for (int y = (int)boundBoxMin.y; y <= (int)boundBoxMax.y; ++y) {
+        for (int x = (int)boundBoxMin.x; x <= (int)boundBoxMax.x; ++x) {
             vec3 screenBar = Barycentric(screenPts, vec2(x, y));    // 屏幕空间重心坐标
             if (screenBar.x < 0.f || screenBar.y < 0.f || screenBar.z < 0.f) {
                 continue;
@@ -169,11 +182,11 @@ void SoftRaster::Triangle(vec4 *clipPts, IShader* shader) {
             if (depth < m_Zbuffer[x + y * m_WindowWidth]) {
                 continue;
             }
-            m_Zbuffer[x + y * m_WindowWidth] = depth;
             QRgb color;
-            bool shouldDraw = shader->Fragment(clipBar, color);
-            if (shouldDraw) {
+            bool discard = shader->Fragment(clipBar, color);
+            if (!discard) {
                 m_PixelBuffer[x + y * m_WindowWidth] = color;
+                m_Zbuffer[x + y * m_WindowWidth] = depth;
             }
         }
     }
