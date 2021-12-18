@@ -31,6 +31,7 @@ class IShader {
 public:
     virtual ~IShader() {};
     virtual vec4 Vertex(int iface, int nthvert) = 0;
+    virtual void Geometry() {};     // 几何着色器可以拿到完整的图元和图元所有的顶点 修改顶点数据（目前功能）或增添顶点（暂且没做）
     virtual bool Fragment(vec3 barycentric, QRgb& outColor) = 0;
 };
 
@@ -63,6 +64,15 @@ class GeneralShader : public IShader {
         vertOutput[nthvert] = o;
 
         return VP_MATRIX * worldPos;
+    }
+
+    virtual void Geometry() override {
+        // 切线计算 http://blog.sina.com.cn/s/blog_15ff6002b0102y8b9.html
+        vec2 uvs[3];
+        for (int i = 0; i < 3; ++i) {
+            uvs[i] = vertOutput[i].uv;
+        }
+        // float prefix = 1.f / ()
     }
 
     virtual bool Fragment(vec3 barycentric, QRgb& outColor) override {
