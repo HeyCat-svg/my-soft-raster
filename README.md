@@ -19,7 +19,13 @@
   clipBar = clipBar / (clipBar.x + clipBar.y + clipBar.z);	// 乘以zt
   ```
 
-- 其他technique point想到再写
+- 关于法线贴图，使用世界空间下的三角形顶点坐标计算切线方向，和法线方向计算副切线方向，然后在vert阶段构造切线空间到世界空间的转换矩阵，再光栅化插值（插值过程中会造成矩阵的模不为1，但从减少计算量和结果差异不明显的角度来说，可以接受在vert阶段构造矩阵）。
+
+  [怎样计算模型的顶点切线？_porry20009_新浪博客 (sina.com.cn)](http://blog.sina.com.cn/s/blog_15ff6002b0102y8b9.html)
+
+- 
 
 ![](https://github.com/HeyCat-svg/my-soft-raster/blob/92d415880f759543f294c9a8ca4416ac91f5b8c9/img/Snipaste_2021-12-16_11-55-35.png)
+
+
 

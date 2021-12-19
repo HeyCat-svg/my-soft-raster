@@ -40,8 +40,11 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
     TGAImage* diffuseImg = new TGAImage();
     diffuseImg->read_tga_file("./obj/african_head/african_head_diffuse.tga");
     diffuseImg->flip_vertically();      // 垂直反转让uv取到正确的值
+    TGAImage* normalImg = new TGAImage();
+    normalImg->read_tga_file("./obj/african_head/african_head_nm_tangent.tga");
+    normalImg->flip_vertically();
     m_Shader = new GeneralShader();
-    ((GeneralShader*)m_Shader)->SetResource(&africanHeadModel, diffuseImg);
+    ((GeneralShader*)m_Shader)->SetResource(&africanHeadModel, diffuseImg, normalImg);
 
     // start repaint timer
     m_RepaintTimer = startTimer(m_RepaintInterval);
@@ -82,6 +85,7 @@ void SoftRaster::paintEvent(QPaintEvent*) {
         for (int j = 0; j < 3; ++j) {
             clipPts[j] = m_Shader->Vertex(i, j);
         }
+        m_Shader->Geometry();
         Triangle(clipPts, m_Shader);
     }
 

@@ -167,6 +167,13 @@ struct mat {
         return ret;
     }
 
+    static mat<nrows, ncols> zero() {
+        mat<nrows, ncols> ret;
+        for (int i = nrows; i--; )
+            for (int j = ncols; j--; ret[i][j] = 0);
+        return ret;
+    }
+
     // 行列式求值
     float det() const {
         return dt<ncols>::det(*this);
@@ -339,6 +346,7 @@ typedef vec<2> vec2;
 typedef vec<3> vec3;
 typedef vec<4> vec4;
 typedef mat<4, 4> mat4x4;
+typedef mat<3, 3> mat3x3;
 enum ProjectionType {ORTH, PERSP};
 
 vec3 cross(const vec3& v1, const vec3& v2);
