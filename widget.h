@@ -25,7 +25,8 @@ private:
     int m_WindowWidth = 600;    // px
     int m_WindowHeight = 600;   // px
 
-    QRgb* m_PixelBuffer = nullptr;  // 像素缓冲
+    QRgb* m_PixelBuffer = nullptr;  // 像素缓冲 color buffer
+    QRgb* m_DepthBuffer = nullptr;
     float* m_Zbuffer = nullptr;
 
     int m_RepaintInterval = 5000;    // ms

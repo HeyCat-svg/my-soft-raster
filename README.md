@@ -27,5 +27,5 @@
 
 ![](https://github.com/HeyCat-svg/my-soft-raster/blob/92d415880f759543f294c9a8ca4416ac91f5b8c9/img/Snipaste_2021-12-16_11-55-35.png)
 
-
+![](https://github.com/HeyCat-svg/my-soft-raster/blob/07c3a312ee512141681e8278b758dfdd4f44bbe6/img/Snipaste_2021-12-19_15-05-47.png)
 
