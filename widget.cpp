@@ -1,6 +1,6 @@
 #include "widget.h"
 
-Model africanHeadModel("./obj/african_head/african_head.obj");
+Model africanHeadModel("./obj/diablo3_pose/diablo3_pose.obj");
 
 SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
     this->setParent(parent);
@@ -19,32 +19,40 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
     }
 
     // set shader env
+    // 设置模型TRS
     vec3 translate(0, 0, 0);
     vec3 rotation(0, 0, 0);
     vec3 scale(1.2, 1.2, 1.2);
     mat4x4 model = TRS(translate, rotation, scale);
     SetModelMatrix(model);
 
+    // 设置相机view矩阵
     vec3 worldUp(0, 1, 0);
-    vec3 cameraPos(1.f, 1.f, 2.f);
+    vec3 cameraPos(0.5f, 0.5f, 2.5f);
     vec3 lookDir = vec3(0, 0, 0) - cameraPos;
     mat4x4 lookAt = LookAt(lookDir, worldUp);
     SetViewMatrix(cameraPos, lookAt);
 
+    // 设置相机投影参数
+
     mat4x4 proj = PerspProjection(PI / 3.f, 1.f, 0.3f, 10.f);
     SetProjectionMatrix(proj);
 
+    // 设置光源
     vec4 light(1, 1, 1, 1);
     SetCameraAndLight(cameraPos, light);
 
+    // 加载资源与生成shader
     TGAImage* diffuseImg = new TGAImage();
-    diffuseImg->read_tga_file("./obj/african_head/african_head_diffuse.tga");
+    diffuseImg->read_tga_file("./obj/diablo3_pose/diablo3_pose_diffuse.tga");
     diffuseImg->flip_vertically();      // 垂直反转让uv取到正确的值
     TGAImage* normalImg = new TGAImage();
-    normalImg->read_tga_file("./obj/african_head/african_head_nm_tangent.tga");
+    normalImg->read_tga_file("./obj/diablo3_pose/diablo3_pose_nm_tangent.tga");
     normalImg->flip_vertically();
-    m_Shader = new GeneralShader();
-    ((GeneralShader*)m_Shader)->SetResource(&africanHeadModel, diffuseImg, normalImg);
+    TGAImage* specImg = new TGAImage();
+    specImg->read_tga_file("./obj/diablo3_pose/diablo3_pose_spec.tga");
+    specImg->flip_vertically();
+    m_Shader = new GeneralShader(&africanHeadModel, diffuseImg, normalImg, specImg);
 
     // start repaint timer
     m_RepaintTimer = startTimer(m_RepaintInterval);
@@ -55,6 +63,10 @@ SoftRaster::~SoftRaster() {
     killTimer(m_RepaintTimer);
     delete[] m_PixelBuffer;
     delete[] m_Zbuffer;
+    delete m_Shader;
+    delete m_ShadowMapShader;
+    delete m_PointLight;
+    delete m_Camera;
 }
 
 
@@ -79,15 +91,24 @@ void SoftRaster::paintEvent(QPaintEvent*) {
         }
     }
 
-    int faceCount = africanHeadModel.nfaces();
-    for (int i = 0; i < faceCount; ++i) {
-        vec4 clipPts[3];
-        for (int j = 0; j < 3; ++j) {
-            clipPts[j] = m_Shader->Vertex(i, j);
-        }
-        m_Shader->Geometry();
-        Triangle(clipPts, m_Shader);
+    // Pass 0: render shader map
+    {
+
     }
+
+    // Pass 1: render model
+    {
+        int faceCount = africanHeadModel.nfaces();
+        for (int i = 0; i < faceCount; ++i) {
+            vec4 clipPts[3];
+            for (int j = 0; j < 3; ++j) {
+                clipPts[j] = m_Shader->Vertex(i, j);
+            }
+            m_Shader->Geometry();
+            Triangle(clipPts, m_Shader);
+        }
+    }
+
 
     // draw image on window
     painter.drawImage(0, 0, image);

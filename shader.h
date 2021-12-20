@@ -17,13 +17,18 @@ extern vec4 LIGHT0;                                 // 向量或位置 区别在
 extern vec3 CAMERA_POS;
 
 void SetModelMatrix(mat4x4& mat);
-void SetViewMatrix(mat4x4& mat);
-void SetViewMatrix(vec3& cameraPos, mat4x4& lookAtMat);
-void SetProjectionMatrix(mat4x4& mat);
+void SetViewMatrix(const mat4x4& mat);
+void SetViewMatrix(const vec3& cameraPos, const mat4x4& lookAtMat);
+void SetProjectionMatrix(const mat4x4& mat);
 void SetCameraAndLight(vec3& cameraPos, vec4& light);
 vec3 NormalObjectToWorld(const vec3& n);
 vec3 Reflect(const vec3& inLightDir, const vec3& normal);
 float clamp01(float v);
+template<int n> vec<n> clamp01(vec<n> v) {
+    vec<n> ret;
+    for (int i = n; i--; ret[i] = (v[i] > 1.f) ? 1.f : ((v[i] < 0.f) ? 0.f : v[i]));
+    return ret;
+}
 
 /////////////////////////////////////////////////////////////////////////////////
 
@@ -38,6 +43,7 @@ public:
 class GeneralShader : public IShader {
     TGAImage* diffuseTexture;
     TGAImage* normalTexture;
+    TGAImage* specTexture;
     Model* model;
     vec3 lightColor;
     float specStrength;
@@ -54,8 +60,14 @@ class GeneralShader : public IShader {
     v2f vertOutput[3];
 
  public:
+    GeneralShader(Model* _model, TGAImage* _diffuseTexture, TGAImage* _normalTexture, TGAImage* _specTexture, vec3 _lightColor = {1, 1, 1}, float _specStrength = 16.f) :
+        model(_model), diffuseTexture(_diffuseTexture), normalTexture(_normalTexture), specTexture(_specTexture),
+        lightColor(_lightColor), specStrength(_specStrength)
+    {}
+
     virtual ~GeneralShader() {
         delete diffuseTexture;
+        delete normalTexture;
         delete model;
     };
 
@@ -103,6 +115,8 @@ class GeneralShader : public IShader {
         static int diffuseHeight = diffuseTexture->get_height();
         static int normalWidth = normalTexture->get_width();
         static int normalHeight = normalTexture->get_height();
+        static int specWidth = specTexture->get_width();
+        static int specHeight = specTexture->get_height();
 
         vec2 uv = {0, 0};
         vec3 worldPos = {0, 0, 0};
@@ -125,19 +139,35 @@ class GeneralShader : public IShader {
         vec4 albedo = {rawAlbedo[2] / 255.f, rawAlbedo[1] / 255.f, rawAlbedo[0] / 255.f, rawAlbedo[3] / 255.f};
         float ambient = 0.2f;
         float diff = clamp01(worldNormal * lightDir);
+        // float specPower = specTexture->get(uv.x * specWidth, uv.y * specHeight)[0] / 255.f;
         float spec = std::pow(clamp01(halfDir * worldNormal), 16);
-        vec3 col = clamp01(ambient + diff + spec) * mul(lightColor, proj<3>(albedo));
+        vec3 col = clamp01((ambient + diff + spec) * mul(lightColor, proj<3>(albedo)));
         col = col * 255.f;
         outColor = (255 << 24) | ((uint8_t)col[0] << 16) | ((uint8_t)col[1] << 8) | ((uint8_t)col[2]);
         return false;
     }
+};
 
-    void SetResource(Model* _model, TGAImage* _diffuseTexture, TGAImage* _normalTexture, vec3 _lightColor = {1, 1, 1}, float _specStrength = 1.f) {
-        diffuseTexture = _diffuseTexture;
-        normalTexture = _normalTexture;
-        model = _model;
-        lightColor = _lightColor;
-        specStrength = _specStrength;
+class ShadowMapShader : public IShader {
+    Model* model;
+
+    struct v2f {
+        // 不使用z/w 然后进行插值的原因在于z/w在世界空间中的变化是非线性的 因此要分别对z和w线性插值后 再做透视除法算出深度
+        vec4 clipPos;
+    };
+
+    v2f vertOutput[3];
+
+    virtual vec4 Vertex(int iface, int nthvert) override {
+        vertOutput[nthvert].clipPos = VP_MATRIX * MODEL_MATRIX * embed<4>(model->vert(iface, nthvert));
+        return vertOutput[nthvert].clipPos;
+    }
+
+    virtual bool Fragment(vec3 barycentric, QRgb& outColor) {
+        vec4 clipPos = barycentric.x * vertOutput[0].clipPos + barycentric.y * vertOutput[1].clipPos + barycentric.z * vertOutput[2].clipPos;
+        uint8_t depthColor = (clipPos.z / clipPos.w) * 255;
+        outColor = (255 << 24) | (depthColor << 16) | (depthColor << 8) | depthColor;
+        return false;
     }
 };
 

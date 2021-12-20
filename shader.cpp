@@ -13,17 +13,16 @@ void SetModelMatrix(mat4x4& mat) {
     MODEL_INVERSE_TRANSPOSE_MATRIX = mat.invert_transpose();
 }
 
-void SetViewMatrix(mat4x4& mat) {
+void SetViewMatrix(const mat4x4& mat) {
     // 从世界坐标的左手系变为view空间的右手系需要将z反转
-    mat[2][0] = -mat[2][0];
-    mat[2][1] = -mat[2][1];
-    mat[2][2] = -mat[2][2];
-    mat[2][3] = -mat[2][3];
-
     VIEW_MATRIX = mat;
+    VIEW_MATRIX[2][0] = -VIEW_MATRIX[2][0];
+    VIEW_MATRIX[2][1] = -VIEW_MATRIX[2][1];
+    VIEW_MATRIX[2][2] = -VIEW_MATRIX[2][2];
+    VIEW_MATRIX[2][3] = -VIEW_MATRIX[2][3];
 }
 
-void SetViewMatrix(vec3& cameraPos, mat4x4& lookAtMat) {
+void SetViewMatrix(const vec3& cameraPos, const mat4x4& lookAtMat) {
     mat4x4 translateMat = mat4x4::identity();
     translateMat[0][3] = -cameraPos.x;
     translateMat[1][3] = -cameraPos.y;
@@ -34,7 +33,7 @@ void SetViewMatrix(vec3& cameraPos, mat4x4& lookAtMat) {
     SetViewMatrix(view);
 }
 
-void SetProjectionMatrix(mat4x4& mat) {
+void SetProjectionMatrix(const mat4x4& mat) {
     static mat4x4 projPrefix = mat4x4::identity();
     static bool isPrefixInit = false;
 

@@ -15,6 +15,8 @@
 #include "geometry.h"
 #include "model.h"
 #include "shader.h"
+#include "light.h"
+#include "camera.h"
 
 class SoftRaster : public QWidget {
     Q_OBJECT
@@ -26,13 +28,16 @@ private:
     int m_WindowHeight = 600;   // px
 
     QRgb* m_PixelBuffer = nullptr;  // 像素缓冲 color buffer
-    QRgb* m_DepthBuffer = nullptr;
+    QRgb* m_ShadowMap = nullptr;    //
     float* m_Zbuffer = nullptr;
 
     int m_RepaintInterval = 5000;    // ms
     int m_RepaintTimer;
 
     IShader* m_Shader;
+    IShader* m_ShadowMapShader;
+    Light* m_PointLight;
+    Camera* m_Camera;
 
 protected:
     virtual void paintEvent(QPaintEvent*) override;
