@@ -27,5 +27,21 @@
 
 ![](https://github.com/HeyCat-svg/my-soft-raster/blob/92d415880f759543f294c9a8ca4416ac91f5b8c9/img/Snipaste_2021-12-16_11-55-35.png)
 
+<p align="center" style="color:grey">blin phong no normal map</p>
+
 ![](https://github.com/HeyCat-svg/my-soft-raster/blob/07c3a312ee512141681e8278b758dfdd4f44bbe6/img/Snipaste_2021-12-19_15-05-47.png)
+
+<p align="center" style="color:grey">with normal map</p>
+
+![](https://github.com/HeyCat-svg/my-soft-raster/blob/971ccfbfc4da6237e2afab23f377dd890c24f78a/img/shadow_map.png)
+
+<p align="center" style="color:grey">shadow map</p>
+
+![](https://github.com/HeyCat-svg/my-soft-raster/blob/971ccfbfc4da6237e2afab23f377dd890c24f78a/img/no_shadow.png)
+
+<p align="center" style="color:grey">no shadow</p>
+
+![](https://github.com/HeyCat-svg/my-soft-raster/blob/971ccfbfc4da6237e2afab23f377dd890c24f78a/img/with_shadow.png)
+
+<p align="center" style="color:grey">with shadow</p>
 
