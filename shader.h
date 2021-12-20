@@ -155,8 +155,9 @@ class GeneralShader : public IShader {
         // 这里不需要反转shadowMap 因为world2Light中的P_MATRIX已经将y反转过了
         float shadow = (shadowMap->pixel((0.5f * lightP.x + 0.5f) * shadowMapWidth, (0.5f * lightP.y + 0.5f) * shadowMapHeight) & 0xff) / 255.f;
         shadow = 0.3f + 0.7f * ((lightP.z + shadowBias) > shadow);
+        shadow = 1.0f;
 
-        vec3 col = clamp01((ambient + diff + spec) * shadow * mul(lightColor, proj<3>(albedo)));
+        vec3 col = clamp01((ambient + shadow * (diff + spec)) * mul(lightColor, proj<3>(albedo)));
         col = col * 255.f;
         outColor = (255 << 24) | ((uint8_t)col[0] << 16) | ((uint8_t)col[1] << 8) | ((uint8_t)col[2]);
         return false;
