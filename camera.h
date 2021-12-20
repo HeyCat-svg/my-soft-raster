@@ -33,6 +33,10 @@ public:
     const mat4x4 &GetViewMatrix() const {
         return m_ViewMatrix;
     }
+
+    const mat4x4 &GetProjectionMatrix() const {
+        return m_ProjectionMatrix;
+    }
 };
 
 #endif // CAMERA_H

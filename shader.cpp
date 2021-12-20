@@ -49,7 +49,7 @@ void SetProjectionMatrix(const mat4x4& mat) {
     VP_MATRIX = PROJ_MATRIX * VIEW_MATRIX;
 }
 
-void SetCameraAndLight(vec3& cameraPos, vec4& light) {
+void SetCameraAndLight(vec3 cameraPos, vec4 light) {
     CAMERA_POS = cameraPos;
     LIGHT0 = light;
 }

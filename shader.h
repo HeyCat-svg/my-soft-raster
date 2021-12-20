@@ -5,6 +5,7 @@
 #include "tgaimage.h"
 #include "model.h"
 #include <QRgb>
+#include <QImage>
 
 ///////////////////////////////////////// SHADER ENV ////////////////////////////
 
@@ -20,7 +21,7 @@ void SetModelMatrix(mat4x4& mat);
 void SetViewMatrix(const mat4x4& mat);
 void SetViewMatrix(const vec3& cameraPos, const mat4x4& lookAtMat);
 void SetProjectionMatrix(const mat4x4& mat);
-void SetCameraAndLight(vec3& cameraPos, vec4& light);
+void SetCameraAndLight(vec3 cameraPos, vec4 light);
 vec3 NormalObjectToWorld(const vec3& n);
 vec3 Reflect(const vec3& inLightDir, const vec3& normal);
 float clamp01(float v);
@@ -44,9 +45,12 @@ class GeneralShader : public IShader {
     TGAImage* diffuseTexture;
     TGAImage* normalTexture;
     TGAImage* specTexture;
+    QImage* shadowMap;
     Model* model;
     vec3 lightColor;
     float specStrength;
+    mat4x4 world2Light;
+    float shadowBias;
 
     struct v2f {
         vec3 normal;
@@ -60,15 +64,16 @@ class GeneralShader : public IShader {
     v2f vertOutput[3];
 
  public:
-    GeneralShader(Model* _model, TGAImage* _diffuseTexture, TGAImage* _normalTexture, TGAImage* _specTexture, vec3 _lightColor = {1, 1, 1}, float _specStrength = 16.f) :
+    GeneralShader(Model* _model, TGAImage* _diffuseTexture, TGAImage* _normalTexture, TGAImage* _specTexture, QImage* _shadowMap, const mat4x4& _world2Light, vec3 _lightColor = {1, 1, 1}, float _specStrength = 16.f, float _shadowBias = 0.02f) :
         model(_model), diffuseTexture(_diffuseTexture), normalTexture(_normalTexture), specTexture(_specTexture),
-        lightColor(_lightColor), specStrength(_specStrength)
+        shadowMap(_shadowMap), world2Light(_world2Light), lightColor(_lightColor), specStrength(_specStrength),
+        shadowBias(_shadowBias)
     {}
 
     virtual ~GeneralShader() {
         delete diffuseTexture;
         delete normalTexture;
-        delete model;
+        delete specTexture;
     };
 
     virtual vec4 Vertex(int iface, int nthvert) override {
@@ -117,6 +122,8 @@ class GeneralShader : public IShader {
         static int normalHeight = normalTexture->get_height();
         static int specWidth = specTexture->get_width();
         static int specHeight = specTexture->get_height();
+        static int shadowMapWidth = shadowMap->width();
+        static int shadowMapHeight = shadowMap->height();
 
         vec2 uv = {0, 0};
         vec3 worldPos = {0, 0, 0};
@@ -141,7 +148,15 @@ class GeneralShader : public IShader {
         float diff = clamp01(worldNormal * lightDir);
         // float specPower = specTexture->get(uv.x * specWidth, uv.y * specHeight)[0] / 255.f;
         float spec = std::pow(clamp01(halfDir * worldNormal), 16);
-        vec3 col = clamp01((ambient + diff + spec) * mul(lightColor, proj<3>(albedo)));
+
+        // 计算点在light空间的clip坐标 进一步得到shadow值
+        vec4 lightP = world2Light * embed<4>(worldPos);
+        lightP = lightP / lightP.w;
+        // 这里不需要反转shadowMap 因为world2Light中的P_MATRIX已经将y反转过了
+        float shadow = (shadowMap->pixel((0.5f * lightP.x + 0.5f) * shadowMapWidth, (0.5f * lightP.y + 0.5f) * shadowMapHeight) & 0xff) / 255.f;
+        shadow = 0.3f + 0.7f * ((lightP.z + shadowBias) > shadow);
+
+        vec3 col = clamp01((ambient + diff + spec) * shadow * mul(lightColor, proj<3>(albedo)));
         col = col * 255.f;
         outColor = (255 << 24) | ((uint8_t)col[0] << 16) | ((uint8_t)col[1] << 8) | ((uint8_t)col[2]);
         return false;
@@ -158,12 +173,15 @@ class ShadowMapShader : public IShader {
 
     v2f vertOutput[3];
 
+public:
+    ShadowMapShader(Model* _model) : model(_model) {}
+
     virtual vec4 Vertex(int iface, int nthvert) override {
         vertOutput[nthvert].clipPos = VP_MATRIX * MODEL_MATRIX * embed<4>(model->vert(iface, nthvert));
         return vertOutput[nthvert].clipPos;
     }
 
-    virtual bool Fragment(vec3 barycentric, QRgb& outColor) {
+    virtual bool Fragment(vec3 barycentric, QRgb& outColor) override {
         vec4 clipPos = barycentric.x * vertOutput[0].clipPos + barycentric.y * vertOutput[1].clipPos + barycentric.z * vertOutput[2].clipPos;
         uint8_t depthColor = (clipPos.z / clipPos.w) * 255;
         outColor = (255 << 24) | (depthColor << 16) | (depthColor << 8) | depthColor;

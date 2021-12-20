@@ -7,6 +7,7 @@ class Light {
 
     mat4x4 m_ViewMatrix;
     mat4x4 m_ProjectionMatrix;
+    mat4x4 m_World2Light;
     vec3 m_LightColor;
     vec3 m_LightDir;
     vec3 m_LightPos;
@@ -25,7 +26,7 @@ public:
         m_ViewMatrix = lookat * translateMat;
 
         if (projType == ProjectionType::PERSP) {
-            m_ProjectionMatrix = PerspProjection(PI / 3.f, 1.f, 0.3f, 10.f);
+            m_ProjectionMatrix = PerspProjection(PI / 2.f, 1.f, 0.3f, 10.f);
         }
         else if (projType == ProjectionType::ORTH) {
             m_ProjectionMatrix = Projection(ProjectionType::ORTH, 0.3f, 10.f, 5.f, -5.f, -5.f, 5.f);
@@ -33,12 +34,20 @@ public:
     }
 
     // 没有经过z反转的view矩阵
-    const mat4x4 &GetViewMatrix() const {
+    const mat4x4& GetViewMatrix() const {
         return m_ViewMatrix;
     }
 
-    const mat4x4 GetProjectionMatrix() const {
+    const mat4x4& GetProjectionMatrix() const {
         return m_ProjectionMatrix;
+    }
+
+    const mat4x4& GetWorld2Light() const {
+        return m_World2Light;
+    }
+
+    void SetWorld2Light(const mat4x4& mat) {
+        m_World2Light = mat;
     }
 };
 

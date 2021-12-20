@@ -17,6 +17,7 @@
 #include "shader.h"
 #include "light.h"
 #include "camera.h"
+#include "monitor.h"
 
 class SoftRaster : public QWidget {
     Q_OBJECT
@@ -39,6 +40,8 @@ private:
     Light* m_PointLight;
     Camera* m_Camera;
 
+    Monitor* m_AnotherMonitor;      // 用于查看其他buffer画面 如shadow map
+
 protected:
     virtual void paintEvent(QPaintEvent*) override;
     virtual void timerEvent(QTimerEvent* event) override;
@@ -48,7 +51,7 @@ public:
     ~SoftRaster();
 
     void Line(int x1, int y1, int x2, int y2, QRgb color);  // Bresenham’s Line Drawing Algorithm
-    void Triangle(vec4* clipPts, IShader* shader);                   // 有深度测试 pts.xy是屏幕坐标 pts.z是深度
+    void Triangle(vec4* clipPts, IShader* shader, QRgb* renderTarget);                   // 有深度测试 pts.xy是屏幕坐标 pts.z是深度
     vec3 Barycentric(vec2* pts, vec2 p);                    // pts[0]=A pts[1]=B pts[2]=C p=P
 
 };

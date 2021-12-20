@@ -31,6 +31,7 @@ set(PROJECT_SOURCES
         main.cpp
         widget.cpp
         widget.h
+        monitor.h
         light.h
         camera.h
         shader.h

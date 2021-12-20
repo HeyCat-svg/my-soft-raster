@@ -7,16 +7,17 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
     this->setWindowTitle(QString("Soft Raster"));
     this->resize(m_WindowWidth, m_WindowHeight);
 
+    m_AnotherMonitor = new Monitor();
+    m_AnotherMonitor->show();
+
     // init pixel buffer
     m_PixelBuffer = new QRgb[m_WindowWidth * m_WindowHeight];
 
     // init zbuffer
     m_Zbuffer = new float[m_WindowWidth * m_WindowHeight];
-    for (int i = 0; i < m_WindowHeight; ++i) {
-        for (int j = 0; j < m_WindowWidth; ++j) {
-            m_Zbuffer[i * m_WindowWidth + j] = Z_MIN;
-        }
-    }
+
+    // init shadow map
+    m_ShadowMap = new QRgb[m_WindowWidth * m_WindowHeight];
 
     // set shader env
     // 设置模型TRS
@@ -26,21 +27,21 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
     mat4x4 model = TRS(translate, rotation, scale);
     SetModelMatrix(model);
 
-    // 设置相机view矩阵
+    // 设置相机参数
     vec3 worldUp(0, 1, 0);
     vec3 cameraPos(0.5f, 0.5f, 2.5f);
     vec3 lookDir = vec3(0, 0, 0) - cameraPos;
-    mat4x4 lookAt = LookAt(lookDir, worldUp);
-    SetViewMatrix(cameraPos, lookAt);
-
-    // 设置相机投影参数
-
-    mat4x4 proj = PerspProjection(PI / 3.f, 1.f, 0.3f, 10.f);
-    SetProjectionMatrix(proj);
+    m_Camera = new Camera(cameraPos, lookDir, PI / 3.f, 1.f, 0.3f, 10.f);
 
     // 设置光源
-    vec4 light(1, 1, 1, 1);
-    SetCameraAndLight(cameraPos, light);
+    vec3 lightColor(1, 1, 1);
+    vec3 lightPos(1, 1, 1);
+    vec3 lightDir = vec3(0, 0, 0) - lightPos;
+    m_PointLight = new Light(lightColor, lightPos, lightDir, ProjectionType::PERSP);
+    SetCameraAndLight(cameraPos, embed<4>(lightPos));
+    SetViewMatrix(m_PointLight->GetViewMatrix());       // 利用set函数 将raw view和proj矩阵转变成最后使用的VP_MATRIX
+    SetProjectionMatrix(m_PointLight->GetProjectionMatrix());
+    m_PointLight->SetWorld2Light(VP_MATRIX);
 
     // 加载资源与生成shader
     TGAImage* diffuseImg = new TGAImage();
@@ -52,7 +53,12 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
     TGAImage* specImg = new TGAImage();
     specImg->read_tga_file("./obj/diablo3_pose/diablo3_pose_spec.tga");
     specImg->flip_vertically();
-    m_Shader = new GeneralShader(&africanHeadModel, diffuseImg, normalImg, specImg);
+    m_Shader = new GeneralShader(
+                &africanHeadModel, diffuseImg, normalImg, specImg,
+                new QImage((uchar*)m_ShadowMap, m_WindowWidth, m_WindowHeight, QImage::Format_ARGB32),
+                m_PointLight->GetWorld2Light()
+                );
+    m_ShadowMapShader = new ShadowMapShader(&africanHeadModel);
 
     // start repaint timer
     m_RepaintTimer = startTimer(m_RepaintInterval);
@@ -61,8 +67,10 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
 
 SoftRaster::~SoftRaster() {
     killTimer(m_RepaintTimer);
+    delete m_AnotherMonitor;
     delete[] m_PixelBuffer;
     delete[] m_Zbuffer;
+    delete[] m_ShadowMap;
     delete m_Shader;
     delete m_ShadowMapShader;
     delete m_PointLight;
@@ -74,6 +82,7 @@ void SoftRaster::paintEvent(QPaintEvent*) {
     QPainter painter(this);
     QImage image((uchar*)m_PixelBuffer, m_WindowWidth, m_WindowHeight, QImage::Format_ARGB32);
 
+    // timer start
     LARGE_INTEGER cpuFreq;
     LARGE_INTEGER startTime;
     LARGE_INTEGER endTime;
@@ -88,16 +97,34 @@ void SoftRaster::paintEvent(QPaintEvent*) {
         for (int j = 0; j < m_WindowWidth; ++j) {
             m_PixelBuffer[i * m_WindowWidth + j] = bgColor;
             m_Zbuffer[i * m_WindowWidth + j] = Z_MIN;
+            m_ShadowMap[i * m_WindowWidth + j] = bgColor;
         }
     }
 
     // Pass 0: render shader map
     {
-
+        SetViewMatrix(m_PointLight->GetViewMatrix());
+        SetProjectionMatrix(m_PointLight->GetProjectionMatrix());
+        int faceCount = africanHeadModel.nfaces();
+        for (int i = 0; i < faceCount; ++i) {
+            vec4 clipPts[3];
+            for (int j = 0; j < 3; ++j) {
+                clipPts[j] = m_ShadowMapShader->Vertex(i, j);
+            }
+            Triangle(clipPts, m_ShadowMapShader, m_ShadowMap);
+        }
     }
 
     // Pass 1: render model
     {
+#pragma omp parallel for
+        for (int i = 0; i < m_WindowHeight; ++i) {
+            for (int j = 0; j < m_WindowWidth; ++j) {
+                m_Zbuffer[i * m_WindowWidth + j] = Z_MIN;
+            }
+        }
+        SetViewMatrix(m_Camera->GetViewMatrix());
+        SetProjectionMatrix(m_Camera->GetProjectionMatrix());
         int faceCount = africanHeadModel.nfaces();
         for (int i = 0; i < faceCount; ++i) {
             vec4 clipPts[3];
@@ -105,17 +132,19 @@ void SoftRaster::paintEvent(QPaintEvent*) {
                 clipPts[j] = m_Shader->Vertex(i, j);
             }
             m_Shader->Geometry();
-            Triangle(clipPts, m_Shader);
+            Triangle(clipPts, m_Shader, m_PixelBuffer);
         }
     }
+
+    // timer end
+    QueryPerformanceCounter(&endTime);
+    runtime = (((endTime.QuadPart - startTime.QuadPart) * 1000.0f) / cpuFreq.QuadPart);
+    qDebug() << "runtime: " << runtime << "ms";
 
 
     // draw image on window
     painter.drawImage(0, 0, image);
-
-    QueryPerformanceCounter(&endTime);
-    runtime = (((endTime.QuadPart - startTime.QuadPart) * 1000.0f) / cpuFreq.QuadPart);
-    qDebug() << "runtime: " << runtime << "ms";
+    m_AnotherMonitor->Draw(m_ShadowMap, m_WindowWidth, m_WindowHeight);
 }
 
 
@@ -174,7 +203,7 @@ void SoftRaster::Line(int x1, int y1, int x2, int y2, QRgb color) {
 }
 
 
-void SoftRaster::Triangle(vec4 *clipPts, IShader* shader) {
+void SoftRaster::Triangle(vec4 *clipPts, IShader* shader, QRgb* renderTarget) {
     vec2 screenPts[3] = {
         vec2((0.5f * (clipPts[0].x / clipPts[0].w) + 0.5f) * m_WindowWidth, (0.5f * (clipPts[0].y / clipPts[0].w) + 0.5f) * m_WindowHeight),
         vec2((0.5f * (clipPts[1].x / clipPts[1].w) + 0.5f) * m_WindowWidth, (0.5f * (clipPts[1].y / clipPts[1].w) + 0.5f) * m_WindowHeight),
@@ -210,7 +239,7 @@ void SoftRaster::Triangle(vec4 *clipPts, IShader* shader) {
             QRgb color;
             bool discard = shader->Fragment(clipBar, color);
             if (!discard) {
-                m_PixelBuffer[x + y * m_WindowWidth] = color;
+                renderTarget[x + y * m_WindowWidth] = color;
                 m_Zbuffer[x + y * m_WindowWidth] = depth;
             }
         }
