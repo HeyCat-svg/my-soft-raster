@@ -6,16 +6,19 @@
 #include "model.h"
 #include <QRgb>
 #include <QImage>
+#include <cstdlib>
 
 ///////////////////////////////////////// SHADER ENV ////////////////////////////
 
 extern mat4x4 MODEL_MATRIX;                         // model to world
 extern mat4x4 MODEL_INVERSE_TRANSPOSE_MATRIX;       // model的逆转置矩阵
 extern mat4x4 VIEW_MATRIX;                          // world to view
+extern mat4x4 MV_INVERSE_TRANSPOSE_MATRIX;
 extern mat4x4 PROJ_MATRIX;                          // view to clip space
 extern mat4x4 VP_MATRIX;                            // proj * view
 extern vec4 LIGHT0;                                 // 向量或位置 区别在于w分量1or0
 extern vec3 CAMERA_POS;
+extern vec4 _ProjectionParams;                       // x=1.0(或-1.0 表示y反转了) y=1/near z=1/far w=(1/far-1/near)
 
 void SetModelMatrix(mat4x4& mat);
 void SetViewMatrix(const mat4x4& mat);
@@ -23,6 +26,7 @@ void SetViewMatrix(const vec3& cameraPos, const mat4x4& lookAtMat);
 void SetProjectionMatrix(const mat4x4& mat);
 void SetCameraAndLight(vec3 cameraPos, vec4 light);
 vec3 NormalObjectToWorld(const vec3& n);
+vec3 NormalObjectToView(const vec3& n);
 vec3 Reflect(const vec3& inLightDir, const vec3& normal);
 float clamp01(float v);
 template<int n> vec<n> clamp01(vec<n> v) {
@@ -155,7 +159,6 @@ class GeneralShader : public IShader {
         // 这里不需要反转shadowMap 因为world2Light中的P_MATRIX已经将y反转过了
         float shadow = (shadowMap->pixel((0.5f * lightP.x + 0.5f) * shadowMapWidth, (0.5f * lightP.y + 0.5f) * shadowMapHeight) & 0xff) / 255.f;
         shadow = 0.3f + 0.7f * ((lightP.z + shadowBias) > shadow);
-        shadow = 1.0f;
 
         vec3 col = clamp01((ambient + shadow * (diff + spec)) * mul(lightColor, proj<3>(albedo)));
         col = col * 255.f;
@@ -187,6 +190,65 @@ public:
         uint8_t depthColor = (clipPos.z / clipPos.w) * 255;
         outColor = (255 << 24) | (depthColor << 16) | (depthColor << 8) | depthColor;
         return false;
+    }
+};
+
+/* horizon-based AO 或许可以在这里计算AO的同时计算光照颜色 */
+class HBAOShader : public IShader {
+    Model* model;
+    float* zbuffer;                 // 正宗的zbuffer 里面是经过插值的ndc空间z值 [far, near]->[0, 1]
+    int zbufferWidth, zbufferHeight;
+    float step, sampleCount, dirCount;        // 步长 采样数目 方向数目
+
+    struct v2f {
+        vec3 viewNormal;
+        vec4 clipPos;               // 用于获取屏幕坐标的 和 手动zclip用的
+    };
+
+    v2f vertOutput[3];
+
+    float CalAmbientOcclusionIntegralInOneDir(const vec3& originNDC, const vec3& dir, const vec3& normal) {
+
+    }
+
+ public:
+    HBAOShader(Model* _model, float* _zbuffer, float _zbufferWidth, float _zbufferHeight, float _step = 2.f, float _sampleCount = 5.f, float _dirCount = 6.f) :
+        model(_model), zbuffer(_zbuffer), zbufferWidth(_zbufferWidth), zbufferHeight(_zbufferHeight),
+        step(_step), sampleCount(_sampleCount), dirCount(_dirCount)
+    {}
+
+    virtual vec4 Vertex(int iface, int nthvert) override {
+        v2f o;
+        o.viewNormal = NormalObjectToView(model->normal(iface, nthvert)).normalize();
+        o.clipPos = VP_MATRIX * MODEL_MATRIX * embed<4>(model->vert(iface, nthvert));
+        vertOutput[nthvert] = o;
+        return o.clipPos;
+    }
+
+    virtual bool Fragment(vec3 barycentric, QRgb& outColor) override {
+        vec3 normal(0, 0, 0);
+        vec4 clipPos(0, 0, 0, 0);
+        for (int i = 0; i < 3; ++i) {
+            normal = normal + barycentric[i] * vertOutput[i].viewNormal;
+            clipPos = clipPos + barycentric[i] * vertOutput[i].clipPos;
+        }
+        normal.normalize();
+        vec3 ndc = proj<3>(clipPos / clipPos.w);
+        vec2 screenPos(0.5f * ndc.x + 0.5f, 0.5f * ndc.y + 0.5f);
+        float depth = zbuffer[(int)(screenPos.y * zbufferHeight) * zbufferWidth + (int)(screenPos.x * zbufferWidth)];
+        // 手动裁剪
+        if (ndc.z < depth) {
+            return true;
+        }
+
+        // 开始旋转采样
+        float totalAO = 0.f;        // 环境光被阻挡的部分
+        float rotationStep = 2 * PI / dirCount;
+        float angle = ((float)std::rand() / RAND_MAX) * rotationStep;
+        for (int i = 0; i < dirCount; ++i, angle += rotationStep) {
+            vec3 dir(std::cos(angle), std::sin(angle), 0);
+
+        }
     }
 };
 
