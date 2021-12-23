@@ -27,6 +27,9 @@ void SetProjectionMatrix(const mat4x4& mat);
 void SetCameraAndLight(vec3 cameraPos, vec4 light);
 vec3 NormalObjectToWorld(const vec3& n);
 vec3 NormalObjectToView(const vec3& n);
+vec3 CoordNDCToView(const vec3& p);
+vec3 CoordNDCToView(vec3 p, int);           // int 用于区分参数是否引用
+vec3 GetNDC(vec2 ndcXY, float* zbuffer, int zbufferWidth, int zbufferHeight);
 vec3 Reflect(const vec3& inLightDir, const vec3& normal);
 float clamp01(float v);
 template<int n> vec<n> clamp01(vec<n> v) {
@@ -198,7 +201,7 @@ class HBAOShader : public IShader {
     Model* model;
     float* zbuffer;                 // 正宗的zbuffer 里面是经过插值的ndc空间z值 [far, near]->[0, 1]
     int zbufferWidth, zbufferHeight;
-    float step, sampleCount, dirCount;        // 步长 采样数目 方向数目
+    float sampleRadius, sampleCount, dirCount;        // 采样半径(uv) 采样数目 方向数目
 
     struct v2f {
         vec3 viewNormal;
@@ -207,14 +210,58 @@ class HBAOShader : public IShader {
 
     v2f vertOutput[3];
 
-    float CalAmbientOcclusionIntegralInOneDir(const vec3& originNDC, const vec3& dir, const vec3& normal) {
+    inline float WeightFun(float w) {
+        w = clamp01(w);
+        return 1.f - w * w;
+    }
 
+    // 对某一方向上的occlusion进行积分
+    float CalAmbientOcclusionIntegralInOneDir(const vec3& originNDC, const vec2& dir, const vec3& normal) {
+        float totalOcclusion = 0.f;
+        float topSin = 0.f;     // 记录积分开始的片段
+
+        vec3 originView = CoordNDCToView(originNDC);
+        vec2 texelSizeStep = mul(dir, vec2(2.f / zbufferWidth, 2.f / zbufferHeight));
+        vec3 tangent = CoordNDCToView(GetNDC(proj<2>(originNDC) + texelSizeStep, zbuffer, zbufferWidth, zbufferHeight), 0) - originView;
+        tangent = (tangent - (normal * tangent) * normal).normalize();
+        vec2 stepNDC = (sampleRadius / sampleCount) * dir;
+
+        // begin march
+        vec3 curSampleNDC = GetNDC(proj<2>(originNDC) + stepNDC, zbuffer, zbufferWidth, zbufferHeight);
+        for (int i = 0; i < sampleCount; ++i) {
+            // 校验NDC是否在合法范围内
+            if (curSampleNDC.x < -1 || curSampleNDC.x > 1 || curSampleNDC.y < -1 || curSampleNDC.y > 1) {
+                break;
+            }
+            // 排除采样到非物体的zbuffer
+            if (curSampleNDC.z < 0) {
+                continue;
+            }
+
+            vec3 sampleView = CoordNDCToView(curSampleNDC);
+            vec3 horizonVec = sampleView - originView;
+            float horizonVecLength = horizonVec.norm();
+
+            // 这个方向的ambient被完全遮住
+            if (tangent * horizonVec < 0) {
+                return 1.f;
+            }
+            float curSin = normal * horizonVec / horizonVecLength; // sinθ
+            float diff = std::max(curSin - topSin, 0.f);
+            topSin = std::max(topSin, curSin);
+
+            totalOcclusion += diff * WeightFun((float)i / sampleCount);
+
+            curSampleNDC = GetNDC(proj<2>(curSampleNDC) + stepNDC, zbuffer, zbufferWidth, zbufferHeight);
+        }
+
+        return totalOcclusion;
     }
 
  public:
-    HBAOShader(Model* _model, float* _zbuffer, float _zbufferWidth, float _zbufferHeight, float _step = 2.f, float _sampleCount = 5.f, float _dirCount = 6.f) :
+    HBAOShader(Model* _model, float* _zbuffer, int _zbufferWidth, int _zbufferHeight, float _sampleRadius = 0.1f, float _sampleCount = 5.f, float _dirCount = 6.f) :
         model(_model), zbuffer(_zbuffer), zbufferWidth(_zbufferWidth), zbufferHeight(_zbufferHeight),
-        step(_step), sampleCount(_sampleCount), dirCount(_dirCount)
+        sampleRadius(_sampleRadius), sampleCount(_sampleCount), dirCount(_dirCount)
     {}
 
     virtual vec4 Vertex(int iface, int nthvert) override {
@@ -237,7 +284,7 @@ class HBAOShader : public IShader {
         vec2 screenPos(0.5f * ndc.x + 0.5f, 0.5f * ndc.y + 0.5f);
         float depth = zbuffer[(int)(screenPos.y * zbufferHeight) * zbufferWidth + (int)(screenPos.x * zbufferWidth)];
         // 手动裁剪
-        if (ndc.z < depth) {
+        if (ndc.z < (depth - 1e-2)) {
             return true;
         }
 
@@ -246,9 +293,32 @@ class HBAOShader : public IShader {
         float rotationStep = 2 * PI / dirCount;
         float angle = ((float)std::rand() / RAND_MAX) * rotationStep;
         for (int i = 0; i < dirCount; ++i, angle += rotationStep) {
-            vec3 dir(std::cos(angle), std::sin(angle), 0);
-
+            vec2 dir(std::cos(angle), std::sin(angle));
+            // 乘上rotationStep是为了计算球面积分的dθ部分 对上半部经度积分后 再对纬度积分
+            totalAO += rotationStep * CalAmbientOcclusionIntegralInOneDir(ndc, dir, normal);
         }
+
+        float ambient = 1.f - 1.f / (2.f * PI) * totalAO;   // 1/2pi 系数是归一化半球面积分 半球面积为1/2pi
+        outColor = (255 << 24) | ((uint8_t)(ambient * 255) << 16) | ((uint8_t)(ambient * 255) << 8) | (uint8_t)(ambient * 255);
+
+        return false;
+    }
+};
+
+
+class ZWriteShader : public IShader {
+    Model* model;
+
+public:
+    ZWriteShader(Model* _model) : model(_model) {}
+
+    virtual vec4 Vertex(int iface, int nthvert) override {
+        return VP_MATRIX * MODEL_MATRIX * embed<4>(model->vert(iface, nthvert));
+    }
+
+    virtual bool Fragment(vec3 barycentric, QRgb& outColor) override {
+        outColor = (255 << 24);     // black
+        return false;
     }
 };
 

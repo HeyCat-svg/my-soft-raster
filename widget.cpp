@@ -15,6 +15,7 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
 
     // init zbuffer
     m_Zbuffer = new float[m_WindowWidth * m_WindowHeight];
+    m_Zbuffer1 = new float[m_WindowWidth * m_WindowHeight];
 
     // init shadow map
     m_ShadowMap = new QRgb[m_WindowWidth * m_WindowHeight];
@@ -59,6 +60,8 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
                 m_PointLight->GetWorld2Light()
                 );
     m_ShadowMapShader = new ShadowMapShader(&africanHeadModel);
+    m_HBAOShader = new HBAOShader(&africanHeadModel, m_Zbuffer1, m_WindowWidth, m_WindowHeight);
+    m_ZWriteShader = new ZWriteShader(&africanHeadModel);
 
     // start repaint timer
     m_RepaintTimer = startTimer(m_RepaintInterval);
@@ -70,9 +73,12 @@ SoftRaster::~SoftRaster() {
     delete m_AnotherMonitor;
     delete[] m_PixelBuffer;
     delete[] m_Zbuffer;
+    delete[] m_Zbuffer1;
     delete[] m_ShadowMap;
     delete m_Shader;
     delete m_ShadowMapShader;
+    delete m_HBAOShader;
+    delete m_ZWriteShader;
     delete m_PointLight;
     delete m_Camera;
 }
@@ -97,44 +103,77 @@ void SoftRaster::paintEvent(QPaintEvent*) {
         for (int j = 0; j < m_WindowWidth; ++j) {
             m_PixelBuffer[i * m_WindowWidth + j] = bgColor;
             m_Zbuffer[i * m_WindowWidth + j] = Z_MIN;
+            m_Zbuffer1[i * m_WindowWidth + j] = Z_MIN;
             m_ShadowMap[i * m_WindowWidth + j] = bgColor;
         }
     }
 
-    // Pass 0: render shader map
-    {
-        SetViewMatrix(m_PointLight->GetViewMatrix());
-        SetProjectionMatrix(m_PointLight->GetProjectionMatrix());
-        int faceCount = africanHeadModel.nfaces();
-        for (int i = 0; i < faceCount; ++i) {
-            vec4 clipPts[3];
-            for (int j = 0; j < 3; ++j) {
-                clipPts[j] = m_ShadowMapShader->Vertex(i, j);
-            }
-            Triangle(clipPts, m_ShadowMapShader, m_ShadowMap);
-        }
-    }
+//    /// blin phong with shadow
+//    // Pass 0: render shader map
+//    {
+//        SetViewMatrix(m_PointLight->GetViewMatrix());
+//        SetProjectionMatrix(m_PointLight->GetProjectionMatrix());
+//        int faceCount = africanHeadModel.nfaces();
+//        for (int i = 0; i < faceCount; ++i) {
+//            vec4 clipPts[3];
+//            for (int j = 0; j < 3; ++j) {
+//                clipPts[j] = m_ShadowMapShader->Vertex(i, j);
+//            }
+//            Triangle(clipPts, m_ShadowMapShader, m_ShadowMap, m_Zbuffer);
+//        }
+//    }
 
-    // Pass 1: render model
+//    // Pass 1: render model
+//    {
+//#pragma omp parallel for
+//        for (int i = 0; i < m_WindowHeight; ++i) {
+//            for (int j = 0; j < m_WindowWidth; ++j) {
+//                m_Zbuffer[i * m_WindowWidth + j] = Z_MIN;
+//            }
+//        }
+//        SetViewMatrix(m_Camera->GetViewMatrix());
+//        SetProjectionMatrix(m_Camera->GetProjectionMatrix());
+//        int faceCount = africanHeadModel.nfaces();
+//        for (int i = 0; i < faceCount; ++i) {
+//            vec4 clipPts[3];
+//            for (int j = 0; j < 3; ++j) {
+//                clipPts[j] = m_Shader->Vertex(i, j);
+//            }
+//            m_Shader->Geometry();
+//            Triangle(clipPts, m_Shader, m_PixelBuffer, m_Zbuffer);
+//        }
+//    }
+
+
+    /// HBAO rendering
+    // Pass 0: z write
     {
-#pragma omp parallel for
-        for (int i = 0; i < m_WindowHeight; ++i) {
-            for (int j = 0; j < m_WindowWidth; ++j) {
-                m_Zbuffer[i * m_WindowWidth + j] = Z_MIN;
-            }
-        }
         SetViewMatrix(m_Camera->GetViewMatrix());
         SetProjectionMatrix(m_Camera->GetProjectionMatrix());
         int faceCount = africanHeadModel.nfaces();
         for (int i = 0; i < faceCount; ++i) {
             vec4 clipPts[3];
             for (int j = 0; j < 3; ++j) {
-                clipPts[j] = m_Shader->Vertex(i, j);
+                clipPts[j] = m_ZWriteShader->Vertex(i, j);
             }
-            m_Shader->Geometry();
-            Triangle(clipPts, m_Shader, m_PixelBuffer);
+            // 将深度写入m_Zbuffer1
+            Triangle(clipPts, m_ZWriteShader, m_PixelBuffer, m_Zbuffer1);
         }
     }
+
+    // Pass 1: draw HBAO
+    {
+        int faceCount = africanHeadModel.nfaces();
+        for (int i = 0; i < faceCount; ++i) {
+            vec4 clipPts[3];
+            for (int j = 0; j < 3; ++j) {
+                clipPts[j] = m_HBAOShader->Vertex(i, j);
+            }
+            // 将深度写入m_Zbuffer1
+            Triangle(clipPts, m_HBAOShader, m_PixelBuffer, m_Zbuffer);
+        }
+    }
+
 
     // timer end
     QueryPerformanceCounter(&endTime);
@@ -144,7 +183,7 @@ void SoftRaster::paintEvent(QPaintEvent*) {
 
     // draw image on window
     painter.drawImage(0, 0, image);
-    m_AnotherMonitor->Draw(m_ShadowMap, m_WindowWidth, m_WindowHeight);
+    // m_AnotherMonitor->Draw(m_ShadowMap, m_WindowWidth, m_WindowHeight);
 }
 
 
@@ -203,7 +242,7 @@ void SoftRaster::Line(int x1, int y1, int x2, int y2, QRgb color) {
 }
 
 
-void SoftRaster::Triangle(vec4 *clipPts, IShader* shader, QRgb* renderTarget) {
+void SoftRaster::Triangle(vec4 *clipPts, IShader* shader, QRgb* renderTarget, float* zbuffer) {
     vec2 screenPts[3] = {
         vec2((0.5f * (clipPts[0].x / clipPts[0].w) + 0.5f) * m_WindowWidth, (0.5f * (clipPts[0].y / clipPts[0].w) + 0.5f) * m_WindowHeight),
         vec2((0.5f * (clipPts[1].x / clipPts[1].w) + 0.5f) * m_WindowWidth, (0.5f * (clipPts[1].y / clipPts[1].w) + 0.5f) * m_WindowHeight),
@@ -231,16 +270,16 @@ void SoftRaster::Triangle(vec4 *clipPts, IShader* shader, QRgb* renderTarget) {
             // 计算实际空间的重心坐标 透视矫正 1/zt = a*1/z1 + b*1/z2 + c*1/z3  It/zt = a*I1/z1 + b*I2/z2 + c*I3/z3 然后view->proj后w分量是z值
             vec3 clipBar = vec3(screenBar.x / clipPts[0].w, screenBar.y / clipPts[1].w, screenBar.z / clipPts[2].w);
             clipBar = clipBar / (clipBar.x + clipBar.y + clipBar.z);
-            float depth = clipBar.x * clipPts[0].z / clipPts[0].w  + clipBar.y * clipPts[1].z / clipPts[1].w + clipBar.z * clipPts[2].z / clipPts[2].w;
+            float depth = (clipBar.x * clipPts[0].z + clipBar.y * clipPts[1].z + clipBar.z * clipPts[2].z) / (clipBar.x * clipPts[0].w + clipBar.y * clipPts[1].w + clipBar.z * clipPts[2].w);
             // 深度测试 z从里到外增大 [far, near]->[0, 1]
-            if (depth < m_Zbuffer[x + y * m_WindowWidth]) {
+            if (depth < zbuffer[x + y * m_WindowWidth]) {
                 continue;
             }
             QRgb color;
             bool discard = shader->Fragment(clipBar, color);
             if (!discard) {
                 renderTarget[x + y * m_WindowWidth] = color;
-                m_Zbuffer[x + y * m_WindowWidth] = depth;
+                zbuffer[x + y * m_WindowWidth] = depth;
             }
         }
     }

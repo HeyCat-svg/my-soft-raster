@@ -80,6 +80,22 @@ vec3 CoordNDCToView(const vec3& p) {
     return ret;
 }
 
+vec3 CoordNDCToView(vec3 p, int) {
+    vec3 ret;
+    ret.z = 1.f / (_ProjectionParams.w * p.z - _ProjectionParams.z);
+    ret.x = -p.x * ret.z / PROJ_MATRIX[0][0];
+    ret.y = -p.y * ret.z / PROJ_MATRIX[1][1];
+    return ret;
+}
+
+vec3 GetNDC(vec2 ndcXY, float* zbuffer, int zbufferWidth, int zbufferHeight) {
+    vec3 ret;
+    ret.x = ndcXY.x;
+    ret.y = ndcXY.y;
+    ret.z = zbuffer[(int)((0.5f * ndcXY.x + 0.5f) * zbufferWidth) + (int)((0.5f * ndcXY.y + 0.5f) * zbufferHeight) * zbufferWidth];
+    return ret;
+}
+
 /* in  normal
  *  |\ |\
  *    \|
