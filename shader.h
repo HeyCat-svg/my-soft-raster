@@ -53,6 +53,7 @@ class GeneralShader : public IShader {
     TGAImage* normalTexture;
     TGAImage* specTexture;
     QImage* shadowMap;
+    QImage* AOMap;      // 环境光遮蔽贴图
     Model* model;
     vec3 lightColor;
     float specStrength;
@@ -66,14 +67,15 @@ class GeneralShader : public IShader {
         // 不能在vertex阶段构造转换矩阵 因为经过插值后 矩阵的模可能!=1 因为矩阵中的向量被插值后模长小于1
         // 但为了减少计算量 对矩阵插值影响轻微 这里默许这么做
         mat3x3 tanToWorld;
+        vec4 clipPos;
     };
 
     v2f vertOutput[3];
 
  public:
-    GeneralShader(Model* _model, TGAImage* _diffuseTexture, TGAImage* _normalTexture, TGAImage* _specTexture, QImage* _shadowMap, const mat4x4& _world2Light, vec3 _lightColor = {1, 1, 1}, float _specStrength = 16.f, float _shadowBias = 0.02f) :
+    GeneralShader(Model* _model, TGAImage* _diffuseTexture, TGAImage* _normalTexture, TGAImage* _specTexture, QImage* _shadowMap, const mat4x4& _world2Light, QImage* _AOMap, vec3 _lightColor = {1, 1, 1}, float _specStrength = 16.f, float _shadowBias = 0.02f) :
         model(_model), diffuseTexture(_diffuseTexture), normalTexture(_normalTexture), specTexture(_specTexture),
-        shadowMap(_shadowMap), world2Light(_world2Light), lightColor(_lightColor), specStrength(_specStrength),
+        shadowMap(_shadowMap), world2Light(_world2Light), AOMap(_AOMap), lightColor(_lightColor), specStrength(_specStrength),
         shadowBias(_shadowBias)
     {}
 
@@ -89,9 +91,10 @@ class GeneralShader : public IShader {
         o.uv = model->uv(iface, nthvert);
         vec4 worldPos = MODEL_MATRIX * embed<4>(model->vert(iface, nthvert));
         o.worldPos = proj<3>(worldPos);
+        o.clipPos = VP_MATRIX * worldPos;
         vertOutput[nthvert] = o;
 
-        return VP_MATRIX * worldPos;
+        return o.clipPos;
     }
 
     virtual void Geometry() override {
@@ -131,19 +134,25 @@ class GeneralShader : public IShader {
         static int specHeight = specTexture->get_height();
         static int shadowMapWidth = shadowMap->width();
         static int shadowMapHeight = shadowMap->height();
+        static int AOMapWidth = AOMap->width();
+        static int AOMapHeight = AOMap->height();
 
         vec2 uv = {0, 0};
         vec3 worldPos = {0, 0, 0};
+        vec4 clipPos = {0, 0, 0, 0};
         mat3x3 tanToWorld = mat3x3::zero();
         for (int i = 0; i < 3; ++i) {
             uv = uv + barycentric[i] * vertOutput[i].uv;
             worldPos = worldPos + barycentric[i] * vertOutput[i].worldPos;
             tanToWorld = tanToWorld + vertOutput[i].tanToWorld * barycentric[i];
+            clipPos = clipPos + vertOutput[i].clipPos * barycentric[i];
         }
         // 计算由法线贴图获取的切线空间法向量 再转换为世界空间
         TGAColor rawTanNormal = normalTexture->get(uv.x * normalWidth, uv.y * normalHeight);
         vec3 tanNormal = {rawTanNormal[2] / 255.f * 2.f - 1.f, rawTanNormal[1] / 255.f * 2.f - 1.f, rawTanNormal[0] / 255.f * 2.f - 1.f};
         vec3 worldNormal = (tanToWorld * tanNormal).normalize();
+        vec2 screenPos = proj<2>(clipPos / clipPos.w);
+        screenPos = 0.5f * screenPos + 0.5f;
 
         vec3 lightDir = (LIGHT0.w == 0) ? embed<3>(LIGHT0) : (embed<3>(LIGHT0) - worldPos).normalize();
         vec3 viewDir = (CAMERA_POS - worldPos).normalize();
@@ -151,7 +160,7 @@ class GeneralShader : public IShader {
         // 图片加载已经经过y反转 不需要reverse y
         TGAColor rawAlbedo = diffuseTexture->get(uv.x * diffuseWidth, uv.y * diffuseHeight);
         vec4 albedo = {rawAlbedo[2] / 255.f, rawAlbedo[1] / 255.f, rawAlbedo[0] / 255.f, rawAlbedo[3] / 255.f};
-        float ambient = 0.2f;
+        float ambient = 0.3f * ((AOMap->pixel(screenPos.x * AOMapWidth, screenPos.y * AOMapHeight) & 0xff) / 255.f);
         float diff = clamp01(worldNormal * lightDir);
         // float specPower = specTexture->get(uv.x * specWidth, uv.y * specHeight)[0] / 255.f;
         float spec = std::pow(clamp01(halfDir * worldNormal), 16);
@@ -164,6 +173,7 @@ class GeneralShader : public IShader {
         shadow = 0.3f + 0.7f * ((lightP.z + shadowBias) > shadow);
 
         vec3 col = clamp01((ambient + shadow * (diff + spec)) * mul(lightColor, proj<3>(albedo)));
+        // col = ambient * lightColor;
         col = col * 255.f;
         outColor = (255 << 24) | ((uint8_t)col[0] << 16) | ((uint8_t)col[1] << 8) | ((uint8_t)col[2]);
         return false;
@@ -218,7 +228,7 @@ class HBAOShader : public IShader {
     // 对某一方向上的occlusion进行积分
     float CalAmbientOcclusionIntegralInOneDir(const vec3& originNDC, const vec2& dir, const vec3& normal) {
         float totalOcclusion = 0.f;
-        float topSin = 0.f;     // 记录积分开始的片段
+        float topSin = 0.03f;     // 记录积分开始的片段 从非零开始意味着忽略sinθ小于0.03的遮挡
 
         vec3 originView = CoordNDCToView(originNDC);
         vec2 texelSizeStep = mul(dir, vec2(2.f / zbufferWidth, 2.f / zbufferHeight));
@@ -259,7 +269,7 @@ class HBAOShader : public IShader {
     }
 
  public:
-    HBAOShader(Model* _model, float* _zbuffer, int _zbufferWidth, int _zbufferHeight, float _sampleRadius = 0.1f, float _sampleCount = 5.f, float _dirCount = 6.f) :
+    HBAOShader(Model* _model, float* _zbuffer, int _zbufferWidth, int _zbufferHeight, float _sampleRadius = 0.2f, float _sampleCount = 5.f, float _dirCount = 6.f) :
         model(_model), zbuffer(_zbuffer), zbufferWidth(_zbufferWidth), zbufferHeight(_zbufferHeight),
         sampleRadius(_sampleRadius), sampleCount(_sampleCount), dirCount(_dirCount)
     {}

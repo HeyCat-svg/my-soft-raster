@@ -20,6 +20,9 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
     // init shadow map
     m_ShadowMap = new QRgb[m_WindowWidth * m_WindowHeight];
 
+    // init AO map
+    m_AOMap = new QRgb[m_WindowWidth * m_WindowHeight];
+
     // set shader env
     // 设置模型TRS
     vec3 translate(0, 0, 0);
@@ -30,7 +33,7 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
 
     // 设置相机参数
     vec3 worldUp(0, 1, 0);
-    vec3 cameraPos(0.5f, 0.5f, 2.5f);
+    vec3 cameraPos(0.5f, 0.5f, 2.5f);       // 0.5 0.5 2.5
     vec3 lookDir = vec3(0, 0, 0) - cameraPos;
     m_Camera = new Camera(cameraPos, lookDir, PI / 3.f, 1.f, 0.3f, 10.f);
 
@@ -57,7 +60,8 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
     m_Shader = new GeneralShader(
                 &africanHeadModel, diffuseImg, normalImg, specImg,
                 new QImage((uchar*)m_ShadowMap, m_WindowWidth, m_WindowHeight, QImage::Format_ARGB32),
-                m_PointLight->GetWorld2Light()
+                m_PointLight->GetWorld2Light(),
+                new QImage((uchar*)m_AOMap, m_WindowWidth, m_WindowHeight, QImage::Format_ARGB32)
                 );
     m_ShadowMapShader = new ShadowMapShader(&africanHeadModel);
     m_HBAOShader = new HBAOShader(&africanHeadModel, m_Zbuffer1, m_WindowWidth, m_WindowHeight);
@@ -75,6 +79,7 @@ SoftRaster::~SoftRaster() {
     delete[] m_Zbuffer;
     delete[] m_Zbuffer1;
     delete[] m_ShadowMap;
+    delete[] m_AOMap;
     delete m_Shader;
     delete m_ShadowMapShader;
     delete m_HBAOShader;
@@ -105,45 +110,9 @@ void SoftRaster::paintEvent(QPaintEvent*) {
             m_Zbuffer[i * m_WindowWidth + j] = Z_MIN;
             m_Zbuffer1[i * m_WindowWidth + j] = Z_MIN;
             m_ShadowMap[i * m_WindowWidth + j] = bgColor;
+            m_AOMap[i * m_WindowWidth + j] = bgColor;
         }
     }
-
-//    /// blin phong with shadow
-//    // Pass 0: render shader map
-//    {
-//        SetViewMatrix(m_PointLight->GetViewMatrix());
-//        SetProjectionMatrix(m_PointLight->GetProjectionMatrix());
-//        int faceCount = africanHeadModel.nfaces();
-//        for (int i = 0; i < faceCount; ++i) {
-//            vec4 clipPts[3];
-//            for (int j = 0; j < 3; ++j) {
-//                clipPts[j] = m_ShadowMapShader->Vertex(i, j);
-//            }
-//            Triangle(clipPts, m_ShadowMapShader, m_ShadowMap, m_Zbuffer);
-//        }
-//    }
-
-//    // Pass 1: render model
-//    {
-//#pragma omp parallel for
-//        for (int i = 0; i < m_WindowHeight; ++i) {
-//            for (int j = 0; j < m_WindowWidth; ++j) {
-//                m_Zbuffer[i * m_WindowWidth + j] = Z_MIN;
-//            }
-//        }
-//        SetViewMatrix(m_Camera->GetViewMatrix());
-//        SetProjectionMatrix(m_Camera->GetProjectionMatrix());
-//        int faceCount = africanHeadModel.nfaces();
-//        for (int i = 0; i < faceCount; ++i) {
-//            vec4 clipPts[3];
-//            for (int j = 0; j < 3; ++j) {
-//                clipPts[j] = m_Shader->Vertex(i, j);
-//            }
-//            m_Shader->Geometry();
-//            Triangle(clipPts, m_Shader, m_PixelBuffer, m_Zbuffer);
-//        }
-//    }
-
 
     /// HBAO rendering
     // Pass 0: z write
@@ -170,10 +139,53 @@ void SoftRaster::paintEvent(QPaintEvent*) {
                 clipPts[j] = m_HBAOShader->Vertex(i, j);
             }
             // 将深度写入m_Zbuffer1
-            Triangle(clipPts, m_HBAOShader, m_PixelBuffer, m_Zbuffer);
+            Triangle(clipPts, m_HBAOShader, m_AOMap, m_Zbuffer);
         }
     }
 
+    /// shadow rendering
+    // Pass 2: draw shadow map
+    {
+#pragma omp parallel for
+        for (int i = 0; i < m_WindowHeight; ++i) {
+            for (int j = 0; j < m_WindowWidth; ++j) {
+                m_Zbuffer[i * m_WindowWidth + j] = Z_MIN;
+            }
+        }
+        SetViewMatrix(m_PointLight->GetViewMatrix());
+        SetProjectionMatrix(m_PointLight->GetProjectionMatrix());
+        int faceCount = africanHeadModel.nfaces();
+        for (int i = 0; i < faceCount; ++i) {
+            vec4 clipPts[3];
+            for (int j = 0; j < 3; ++j) {
+                clipPts[j] = m_ShadowMapShader->Vertex(i, j);
+            }
+            Triangle(clipPts, m_ShadowMapShader, m_ShadowMap, m_Zbuffer);
+        }
+    }
+
+    /// blin phong rendering
+    // Pass 3: draw model
+    {
+#pragma omp parallel for
+        for (int i = 0; i < m_WindowHeight; ++i) {
+            for (int j = 0; j < m_WindowWidth; ++j) {
+                m_Zbuffer[i * m_WindowWidth + j] = Z_MIN;
+                m_PixelBuffer[i * m_WindowWidth + j] = bgColor;
+            }
+        }
+        SetViewMatrix(m_Camera->GetViewMatrix());
+        SetProjectionMatrix(m_Camera->GetProjectionMatrix());
+        int faceCount = africanHeadModel.nfaces();
+        for (int i = 0; i < faceCount; ++i) {
+            vec4 clipPts[3];
+            for (int j = 0; j < 3; ++j) {
+                clipPts[j] = m_Shader->Vertex(i, j);
+            }
+            m_Shader->Geometry();
+            Triangle(clipPts, m_Shader, m_PixelBuffer, m_Zbuffer);
+        }
+    }
 
     // timer end
     QueryPerformanceCounter(&endTime);

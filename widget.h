@@ -30,6 +30,7 @@ private:
 
     QRgb* m_PixelBuffer = nullptr;  // 像素缓冲 color buffer
     QRgb* m_ShadowMap = nullptr;    //
+    QRgb* m_AOMap = nullptr;
     float* m_Zbuffer = nullptr;
     float* m_Zbuffer1 = nullptr;
 

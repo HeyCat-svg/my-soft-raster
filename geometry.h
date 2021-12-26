@@ -34,6 +34,20 @@ vec<n> operator+(const vec<n>& lhs, const vec<n>& rhs) {
 }
 
 template<int n>
+vec<n> operator+(const vec<n>& lhs, const float rhs) {
+    vec<n> ret = lhs;
+    for (int i = n; i--; ret[i] += rhs);
+    return ret;
+}
+
+template<int n>
+vec<n> operator+(const float& lhs, const vec<n> rhs) {
+    vec<n> ret = rhs;
+    for (int i = n; i--; ret[i] += lhs);
+    return ret;
+}
+
+template<int n>
 vec<n> operator-(const vec<n>& lhs, const vec<n>& rhs) {
     vec<n> ret = lhs;
     for (int i = n; i--; ret[i] -= rhs[i]);
