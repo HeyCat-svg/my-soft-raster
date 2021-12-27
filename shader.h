@@ -332,4 +332,39 @@ public:
     }
 };
 
+class RayTracerShader : public IShader {
+    vec3 screenMesh[2][3] = {
+        {{-1.f, 1.f, 1.f}, {-1.f, -1.f, 1.f}, {1.f, -1.f, 1.f}},
+        {{-1.f, 1.f, 1.f}, {1.f, -1.f, 1.f}, {1.f, 1.f, 1.f}}
+    };
+    float fov, aspect, halfWidth, halfHeight;
+
+    struct v2f {
+        vec3 rayDir;
+    };
+
+    v2f vertOutput[3];
+
+public:
+    RayTracerShader(float _fov=PI/3, float _aspect=1.f) :
+        fov(_fov), aspect(_aspect)
+    {
+        halfWidth = aspect * std::tan(fov / 2.f);
+        halfHeight = std::tan(fov / 2.f);
+    }
+
+    // 只是渲染长方形画面的两个三角形 中间的像素靠光栅化插值
+    virtual vec4 Vertex(int iface, int nthvert) override {
+        v2f o;
+        const vec3& meshP = screenMesh[iface][nthvert];
+        o.rayDir = vec3(meshP.x * halfWidth, meshP.y * halfHeight, -1.f);
+    }
+
+    virtual bool Fragment(vec3 barycentric, QRgb& outColor) override {
+        return true;
+    }
+
+
+};
+
 #endif // SHADER_H
