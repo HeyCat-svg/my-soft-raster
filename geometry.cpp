@@ -85,3 +85,6 @@ mat4x4 PerspProjection(float fov, float aspect, float znear, float zfar) {
 
     return ret;
 }
+
+const float MIN = std::numeric_limits<float>::lowest();
+const float MAX = std::numeric_limits<float>::max();

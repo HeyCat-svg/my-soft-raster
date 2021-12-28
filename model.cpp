@@ -3,7 +3,10 @@
 #include <sstream>
 #include "model.h"
 
-Model::Model(const std::string filename) : verts_(), uv_(), norms_(), facet_vrt_(), facet_tex_(), facet_nrm_(), diffusemap_(), normalmap_(), specularmap_() {
+Model::Model(const std::string filename) : verts_(), uv_(), norms_(), facet_vrt_(), facet_tex_(), facet_nrm_() {
+    vec3 minVert(MAX, MAX, MAX);
+    vec3 maxVert(MIN, MIN, MIN);
+
     std::ifstream in;
     in.open (filename, std::ifstream::in);
     if (in.fail()) return;
@@ -15,7 +18,12 @@ Model::Model(const std::string filename) : verts_(), uv_(), norms_(), facet_vrt_
         if (!line.compare(0, 2, "v ")) {
             iss >> trash;
             vec3 v;
-            for (int i=0;i<3;i++) iss >> v[i];
+            for (int i=0;i<3;i++) {
+                iss >> v[i];
+                minVert[i] = std::min(minVert[i], v[i]);
+                maxVert[i] = std::max(maxVert[i], v[i]);
+            }
+
             verts_.push_back(v);
         } else if (!line.compare(0, 3, "vn ")) {
             iss >> trash >> trash;
@@ -45,10 +53,20 @@ Model::Model(const std::string filename) : verts_(), uv_(), norms_(), facet_vrt_
         }
     }
     in.close();
+    model_bounding_box_ = BoundingBox3f(minVert, maxVert);
+    tri_bounding_box_ = new BoundingBox3f*[nfaces()];
+    memset(tri_bounding_box_, 0, sizeof(BoundingBox3f*) * nfaces());
     std::cerr << "# v# " << nverts() << " f# "  << nfaces() << " vt# " << uv_.size() << " vn# " << norms_.size() << std::endl;
-    load_texture(filename, "_diffuse.tga",    diffusemap_);
-    load_texture(filename, "_nm_tangent.tga", normalmap_);
-    load_texture(filename, "_spec.tga",       specularmap_);
+}
+
+Model::~Model() {
+    int nface = nfaces();
+    for (int i = 0; i < nface; ++i) {
+        if (tri_bounding_box_[i] != nullptr) {
+            delete tri_bounding_box_[i];
+        }
+    }
+    delete[] tri_bounding_box_;
 }
 
 int Model::nverts() const {
@@ -67,34 +85,63 @@ vec3 Model::vert(const int iface, const int nthvert) const {
     return verts_[facet_vrt_[iface*3+nthvert]];
 }
 
-void Model::load_texture(std::string filename, const std::string suffix, TGAImage &img) {
-    size_t dot = filename.find_last_of(".");
-    if (dot==std::string::npos) return;
-    std::string texfile = filename.substr(0,dot) + suffix;
-    std::cerr << "texture file " << texfile << " loading " << (img.read_tga_file(texfile.c_str()) ? "ok" : "failed") << std::endl;
-    img.flip_vertically();
-}
-
-TGAColor Model::diffuse(const vec2 &uvf) const {
-    return diffusemap_.get(uvf[0]*diffusemap_.get_width(), uvf[1]*diffusemap_.get_height());
-}
-
-vec3 Model::normal(const vec2 &uvf) const {
-    TGAColor c = normalmap_.get(uvf[0]*normalmap_.get_width(), uvf[1]*normalmap_.get_height());
-    vec3 res;
-    for (int i=0; i<3; i++)
-        res[2-i] = c[i]/255.*2 - 1;
-    return res;
-}
-
-float Model::specular(const vec2 &uvf) const {
-    return specularmap_.get(uvf[0]*specularmap_.get_width(), uvf[1]*specularmap_.get_height())[0];
-}
-
 vec2 Model::uv(const int iface, const int nthvert) const {
     return uv_[facet_tex_[iface*3+nthvert]];
 }
 
 vec3 Model::normal(const int iface, const int nthvert) const {
     return norms_[facet_nrm_[iface*3+nthvert]];
+}
+
+const BoundingBox3f& Model::GetBoundingBox(int faceIdx) const {
+    if (tri_bounding_box_[faceIdx] != nullptr) {
+        return *(tri_bounding_box_[faceIdx]);
+    }
+
+    vec3 verts[3];
+    vec3 minVert, maxVert;
+    for (int i = 0; i < 3; ++i) {
+        verts[i] = verts_[facet_vrt_[faceIdx * 3 + i]];
+    }
+    minVert.x = std::min(verts[0].x, std::min(verts[1].x, verts[2].x));
+    minVert.y = std::min(verts[0].y, std::min(verts[1].y, verts[2].y));
+    minVert.z = std::min(verts[0].z, std::min(verts[1].z, verts[2].z));
+
+    maxVert.x = std::max(verts[0].x, std::max(verts[1].x, verts[2].x));
+    maxVert.y = std::max(verts[0].y, std::max(verts[1].y, verts[2].y));
+    maxVert.z = std::max(verts[0].z, std::max(verts[1].z, verts[2].z));
+
+    tri_bounding_box_[faceIdx] = new BoundingBox3f(minVert, maxVert);
+
+    return *(tri_bounding_box_[faceIdx]);
+}
+
+const BoundingBox3f& Model::GetBoundingBox() const {
+    return model_bounding_box_;
+}
+
+// 见GAMES101 Lec13
+bool Model::Intersect(int faceIdx, const Ray& ray, vec3& bar, float& t) {
+    vec3 verts[3];
+    for (int i = 0; i < 3; ++i) {
+        verts[i] = verts_[facet_vrt_[faceIdx * 3 + i]];
+    }
+
+    vec3 v01 = verts[1] - verts[0];
+    vec3 v02 = verts[2] - verts[0];
+    vec3 s = ray.origin - verts[0];
+    vec3 s1 = cross(ray.dir, v02);
+    vec3 s2 = cross(s, v01);
+
+    float prefix = 1.f / (s1 * v01);
+    bar.y = prefix * (s1 * s);
+    bar.z = prefix * (s2 * ray.dir);
+    bar.x = 1.f - bar.y - bar.z;
+
+    if (bar.x < 0 || bar.y < 0 || bar.z < 0 || t < 0) {
+        return false;
+    }
+
+    t = prefix * (s2 * v02);
+    return true;
 }

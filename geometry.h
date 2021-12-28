@@ -371,5 +371,62 @@ mat4x4 PerspProjection(float fov, float aspect, float znear, float zfar); // fov
 
 /////////////////////////////////////////////////////////////////////////////////
 
+extern const float MIN;
+extern const float MAX;
+
+struct Ray {
+    vec3 origin;
+    vec3 dir;
+};
+
+/* 此结构体专门用来描述光线与网格的碰撞信息 */
+struct HitResult {
+    Ray ray;
+    float t;
+    vec3 hitPoint;      // 碰撞点坐标
+    int hitIdx;         // 碰撞的网格faceID
+    vec3 barycentric;   // 碰撞点在三角面片中的空间重心坐标
+};
+
+struct BoundingBox3f {
+    vec3 center;
+    vec3 minPoint;
+    vec3 maxPoint;
+
+    BoundingBox3f() = default;
+    BoundingBox3f(vec3 _minPoint, vec3 _maxPoint) : minPoint(_minPoint), maxPoint(_maxPoint) {
+        center = (minPoint + maxPoint) * 0.5f;
+    }
+    bool Overlaps(const BoundingBox3f& inBox) {
+        return (inBox.minPoint.x >= minPoint.x) && (inBox.minPoint.y >= minPoint.y) && (inBox.minPoint.z >= minPoint.z) &&
+               (inBox.maxPoint.x <= maxPoint.x) && (inBox.maxPoint.y <= maxPoint.y) && (inBox.maxPoint.z <= maxPoint.z);
+    }
+    vec3 GetCenter() const {return center;}
+
+    // 计算光线和包围盒的碰撞信息
+    bool Intersect(const Ray& ray, vec2* hitResult = nullptr) {
+        float tMin = MIN, tMax = MAX;
+
+        for (int i = 0; i < 3; ++i) {
+            float t1 = (minPoint[i] - ray.origin[i]) / ray.dir[i];
+            float t2 = (maxPoint[i] - ray.origin[i]) / ray.dir[i];
+            tMin = std::max(tMin, std::min(t1, t2));
+            tMax = std::min(tMax, std::max(t1, t2));
+        }
+
+        bool intersect = (tMin < tMax) && (tMax > 0);
+
+        // 输出包围盒的碰撞信息
+        if (intersect && hitResult != nullptr) {
+            (*hitResult)[0] = tMin;
+            (*hitResult)[1] = tMax;
+        }
+
+        return intersect;
+    }
+
+};
+
+/////////////////////////////////////////////////////////////////////////////////
 
 #endif // GEOMETRY_H

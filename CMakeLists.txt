@@ -40,6 +40,8 @@ set(PROJECT_SOURCES
         model.h
         tgaimage.cpp
         tgaimage.h
+        accel.cpp
+        accel.h
         geometry.cpp
         geometry.h
 )

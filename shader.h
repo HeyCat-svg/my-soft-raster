@@ -315,7 +315,6 @@ class HBAOShader : public IShader {
     }
 };
 
-
 class ZWriteShader : public IShader {
     Model* model;
 
