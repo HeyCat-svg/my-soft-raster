@@ -126,6 +126,7 @@ bool Accel::IntersectHelper(const Ray &ray, KDNode* node, HitResult &hitResult, 
 
     // 叶子节点
     if (node->left == nullptr && node->right == nullptr) {
+        bool hit = false;
         float tMin = MAX;
         int hitIdx;
         vec3 barycentric;
@@ -140,15 +141,17 @@ bool Accel::IntersectHelper(const Ray &ray, KDNode* node, HitResult &hitResult, 
                 tMin = t;
                 barycentric = bar;
                 hitIdx = node->tris[i];
+                hit = true;
             }
         }
         hitResult.barycentric = barycentric;
         hitResult.hitIdx = hitIdx;
         hitResult.t = tMin;
-        return true;
+        return hit;
     }
 
     // 非叶子节点
+    hitResult.t = MAX;      // 防止检测右节点时(tmpResult.t < hitResult.t)出现bug
     HitResult tmpResult;
     bool hitLeft, hitRight;
     if ((hitLeft = IntersectHelper(ray, node->left, tmpResult, shadow))) {
@@ -169,5 +172,10 @@ bool Accel::IntersectHelper(const Ray &ray, KDNode* node, HitResult &hitResult, 
 }
 
 bool Accel::Intersect(const Ray& ray, HitResult& hitResult, bool shadow) {
-    return IntersectHelper(ray, m_TreeRoot, hitResult, shadow);
+    bool ret = IntersectHelper(ray, m_TreeRoot, hitResult, shadow);
+    if (ret) {
+        hitResult.ray = ray;
+        hitResult.hitPoint = ray.origin + hitResult.t * ray.dir;
+    }
+    return ret;
 }
