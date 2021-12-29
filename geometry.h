@@ -20,6 +20,13 @@ struct vec {
 };
 
 template<int n>
+vec<n> operator-(const vec<n>& v) {
+    vec<n> ret;
+    for (int i = n; i--; ret[i] = -v[i]);
+    return ret;
+}
+
+template<int n>
 float operator*(const vec<n>& lhs, const vec<n>& rhs) {
     float ret = 0;
     for (int i = n; i--; ret += lhs[i] * rhs[i]);
@@ -377,6 +384,9 @@ extern const float MAX;
 struct Ray {
     vec3 origin;
     vec3 dir;
+
+    Ray() = default;
+    Ray(vec3 o, vec3 d) : origin(o), dir(d) {}
 };
 
 /* 此结构体专门用来描述光线与网格的碰撞信息 */
@@ -414,7 +424,7 @@ struct BoundingBox3f {
             tMax = std::min(tMax, std::max(t1, t2));
         }
 
-        bool intersect = (tMin < tMax) && (tMax > 0);
+        bool intersect = (tMin <= tMax) && (tMax >= 0);
 
         // 输出包围盒的碰撞信息
         if (intersect && hitResult != nullptr) {

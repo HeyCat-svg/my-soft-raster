@@ -2,35 +2,43 @@
 #include <windows.h>
 #include <algorithm>
 
+// #define _DEBUG
+
 Accel::Accel() {}
 
 Accel::Accel(Model* mesh) : m_Mesh(mesh) {}
 
+Accel::~Accel() {
+    Clear();
+}
+
 void Accel::Split(KDNode *node, int depth) {
     m_MaxDepth = std::max(m_MaxDepth, depth);
     int nface = node->tris.size();
-    if (nface < m_SplitTermination) {
+    if (nface <= m_SplitTermination) {
         return;
     }
 
-    // 对三角形数组排序
-    PartitionRule rule = node->rule;        // 向下划分的依据
-    switch (rule) {
-    case X_AXIS:
+    const BoundingBox3f& box = node->boundingBox;
+    float dx = box.maxPoint.x - box.minPoint.x;
+    float dy = box.maxPoint.y - box.minPoint.y;
+    float dz = box.maxPoint.z - box.minPoint.z;
+
+    // 沿着包围盒轴最长进行划分
+    if (dx > dy && dx > dz) {
         std::sort(node->tris.begin(), node->tris.end(), [this](const int &l, const int &r) {
             return this->m_Mesh->GetBoundingBox(l).GetCenter().x < this->m_Mesh->GetBoundingBox(r).GetCenter().x;
         });
-        break;
-    case Y_AXIS:
+    }
+    else if (dy > dz) {
         std::sort(node->tris.begin(), node->tris.end(), [this](const int &l, const int &r) {
             return this->m_Mesh->GetBoundingBox(l).GetCenter().y < this->m_Mesh->GetBoundingBox(r).GetCenter().y;
         });
-        break;
-    case Z_AXIS:
+    }
+    else {
         std::sort(node->tris.begin(), node->tris.end(), [this](const int &l, const int &r) {
             return this->m_Mesh->GetBoundingBox(l).GetCenter().z < this->m_Mesh->GetBoundingBox(r).GetCenter().z;
         });
-        break;
     }
 
     // 重建左右包围盒
@@ -54,9 +62,9 @@ void Accel::Split(KDNode *node, int depth) {
     }
 
     // 新建左右分支
-    node->left = new KDNode(BoundingBox3f(minVertLeft, maxVertLeft), (PartitionRule)(((int)rule + 1) % 3));
+    node->left = new KDNode(BoundingBox3f(minVertLeft, maxVertLeft));
     node->left->tris = std::vector<int>(node->tris.begin(), node->tris.begin() + nface / 2);
-    node->right = new KDNode(BoundingBox3f(minVertRight, maxVertRight), (PartitionRule)(((int)rule + 1) % 3));
+    node->right = new KDNode(BoundingBox3f(minVertRight, maxVertRight));
     node->right->tris = std::vector<int>(node->tris.begin() + nface / 2, node->tris.end());
 
     // 清空该节点
@@ -79,6 +87,7 @@ void Accel::Build() {
         return;
     }
 
+#ifdef _DEBUG
     // timer start
     LARGE_INTEGER cpuFreq;
     LARGE_INTEGER startTime;
@@ -86,9 +95,10 @@ void Accel::Build() {
     double runtime = 0.0;
     QueryPerformanceFrequency(&cpuFreq);
     QueryPerformanceCounter(&startTime);
+#endif
 
     Clear();
-    m_TreeRoot = new KDNode(m_Mesh->GetBoundingBox(), X_AXIS);
+    m_TreeRoot = new KDNode(m_Mesh->GetBoundingBox());
     int nface = m_Mesh->nfaces();
     for (int i = 0; i < nface; ++i) {
         m_TreeRoot->tris.emplace_back(i);   // 先将所有的三角形放在一个node里
@@ -98,11 +108,13 @@ void Accel::Build() {
     m_MaxDepth = 1;
     Split(m_TreeRoot, 1);                   // 然后递归划分
 
+#ifdef _DEBUG
     // timer end
     QueryPerformanceCounter(&endTime);
     runtime = (((endTime.QuadPart - startTime.QuadPart) * 1000.0f) / cpuFreq.QuadPart);
     qDebug() << "build time: " << runtime << "ms";
-    qDebug() << "depth: " << m_MaxDepth << "\tnode num: " << m_NodeNum << "\tdleaf num: " << m_LeafNum;
+    qDebug() << "depth: " << m_MaxDepth << "\tnode num: " << m_NodeNum << "\tleaf num: " << m_LeafNum;
+#endif
 }
 
 void Accel::Clear(KDNode* node) {
@@ -172,10 +184,28 @@ bool Accel::IntersectHelper(const Ray &ray, KDNode* node, HitResult &hitResult, 
 }
 
 bool Accel::Intersect(const Ray& ray, HitResult& hitResult, bool shadow) {
+#ifdef _DEBUG
+    // timer start
+    LARGE_INTEGER cpuFreq;
+    LARGE_INTEGER startTime;
+    LARGE_INTEGER endTime;
+    double runtime = 0.0;
+    QueryPerformanceFrequency(&cpuFreq);
+    QueryPerformanceCounter(&startTime);
+#endif
+
     bool ret = IntersectHelper(ray, m_TreeRoot, hitResult, shadow);
     if (ret) {
         hitResult.ray = ray;
         hitResult.hitPoint = ray.origin + hitResult.t * ray.dir;
     }
+
+#ifdef _DEBUG
+    // timer end
+    QueryPerformanceCounter(&endTime);
+    runtime = (((endTime.QuadPart - startTime.QuadPart) * 1000.0f) / cpuFreq.QuadPart);
+    qDebug() << "intersect time: " << runtime << "ms";
+#endif
+
     return ret;
 }

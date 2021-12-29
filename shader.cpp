@@ -3,6 +3,7 @@
 mat4x4 MODEL_MATRIX;
 mat4x4 MODEL_INVERSE_TRANSPOSE_MATRIX;      // model的逆转置矩阵
 mat4x4 VIEW_MATRIX;
+mat4x4 V_TRANSPOSE_MATRIX;
 mat4x4 MV_INVERSE_TRANSPOSE_MATRIX;         // (view * model)的逆转置矩阵
 mat4x4 PROJ_MATRIX;
 mat4x4 VP_MATRIX;
@@ -24,6 +25,7 @@ void SetViewMatrix(const mat4x4& mat) {
     VIEW_MATRIX[2][3] = -VIEW_MATRIX[2][3];
 
     MV_INVERSE_TRANSPOSE_MATRIX = (VIEW_MATRIX * MODEL_MATRIX).invert_transpose();
+    V_TRANSPOSE_MATRIX = VIEW_MATRIX.transpose();
 }
 
 void SetViewMatrix(const vec3& cameraPos, const mat4x4& lookAtMat) {

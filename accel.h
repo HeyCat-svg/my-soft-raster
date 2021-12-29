@@ -5,19 +5,14 @@
 #include "model.h"
 #include <vector>
 
-enum PartitionRule {X_AXIS=0, Y_AXIS, Z_AXIS};
-
 struct KDNode {
     BoundingBox3f boundingBox;
     std::vector<int> tris;
     KDNode* left = nullptr;
     KDNode* right = nullptr;
 
-    PartitionRule rule;     // 如果左右子节点非空 则该字段表示划分成两个子节点的依据
-
-    KDNode(BoundingBox3f _box, PartitionRule _rule, KDNode* _left = nullptr, KDNode* _right = nullptr) {
+    KDNode(BoundingBox3f _box, KDNode* _left = nullptr, KDNode* _right = nullptr) {
         boundingBox = _box;
-        rule = _rule;
         left = _left;
         right = _right;
     }
@@ -38,6 +33,7 @@ private:
 public:
     Accel();
     Accel(Model* mesh);
+    ~Accel();
 
     void SetMesh(Model* mesh);
     void Build();

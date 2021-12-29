@@ -137,11 +137,11 @@ bool Model::Intersect(int faceIdx, const Ray& ray, vec3& bar, float& t) {
     bar.y = prefix * (s1 * s);
     bar.z = prefix * (s2 * ray.dir);
     bar.x = 1.f - bar.y - bar.z;
+    t = prefix * (s2 * v02);        // fuck!!!! 之前没考虑到t的判断 把t放到if后面计算了 活该啊！！！
 
     if (bar.x < 0 || bar.y < 0 || bar.z < 0 || t < 0) {
         return false;
     }
 
-    t = prefix * (s2 * v02);
     return true;
 }

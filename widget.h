@@ -18,6 +18,7 @@
 #include "light.h"
 #include "camera.h"
 #include "monitor.h"
+#include "accel.h"
 
 class SoftRaster : public QWidget {
     Q_OBJECT
@@ -37,15 +38,18 @@ private:
     int m_RepaintInterval = 5000;    // ms
     int m_RepaintTimer;
 
-    IShader* m_Shader;
-    IShader* m_ShadowMapShader;
-    IShader* m_HBAOShader;
-    IShader* m_ZWriteShader;
+    IShader* m_Shader = nullptr;
+    IShader* m_ShadowMapShader = nullptr;
+    IShader* m_HBAOShader = nullptr;
+    IShader* m_ZWriteShader = nullptr;
+    IShader* m_RayTracerShader = nullptr;
 
-    Light* m_PointLight;
-    Camera* m_Camera;
+    Light* m_PointLight = nullptr;
+    Camera* m_Camera = nullptr;
 
-    Monitor* m_AnotherMonitor;      // 用于查看其他buffer画面 如shadow map
+    Accel* m_ModelAccel = nullptr;
+
+    Monitor* m_AnotherMonitor = nullptr;      // 用于查看其他buffer画面 如shadow map
 
 protected:
     virtual void paintEvent(QPaintEvent*) override;

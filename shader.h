@@ -4,6 +4,7 @@
 #include "geometry.h"
 #include "tgaimage.h"
 #include "model.h"
+#include "accel.h"
 #include <QRgb>
 #include <QImage>
 #include <cstdlib>
@@ -13,6 +14,7 @@
 extern mat4x4 MODEL_MATRIX;                         // model to world
 extern mat4x4 MODEL_INVERSE_TRANSPOSE_MATRIX;       // model的逆转置矩阵
 extern mat4x4 VIEW_MATRIX;                          // world to view
+extern mat4x4 V_TRANSPOSE_MATRIX;
 extern mat4x4 MV_INVERSE_TRANSPOSE_MATRIX;
 extern mat4x4 PROJ_MATRIX;                          // view to clip space
 extern mat4x4 VP_MATRIX;                            // proj * view
@@ -337,6 +339,8 @@ class RayTracerShader : public IShader {
         {{-1.f, 1.f, 1.f}, {1.f, -1.f, 1.f}, {1.f, 1.f, 1.f}}
     };
     float fov, aspect, halfWidth, halfHeight;
+    Accel* modelAccel;      // 模型三角面片搜索加速结构
+    Model* model;
 
     struct v2f {
         vec3 rayDir;
@@ -345,8 +349,8 @@ class RayTracerShader : public IShader {
     v2f vertOutput[3];
 
 public:
-    RayTracerShader(float _fov=PI/3, float _aspect=1.f) :
-        fov(_fov), aspect(_aspect)
+    RayTracerShader(Model* _model, Accel* _modelAccel, float _fov=PI/3, float _aspect=1.f) :
+        model(_model), modelAccel(_modelAccel), fov(_fov), aspect(_aspect)
     {
         halfWidth = aspect * std::tan(fov / 2.f);
         halfHeight = std::tan(fov / 2.f);
@@ -357,10 +361,49 @@ public:
         v2f o;
         const vec3& meshP = screenMesh[iface][nthvert];
         o.rayDir = vec3(meshP.x * halfWidth, meshP.y * halfHeight, -1.f);
+        // view的逆矩阵的逆转置矩阵就是view的转置 将向量从view到world
+        o.rayDir = proj<3>(V_TRANSPOSE_MATRIX * embed<4>(o.rayDir, 0)).normalize();
+        vertOutput[nthvert] = o;
+        return vec4(meshP.x, -meshP.y, meshP.z, 1.f);
     }
 
     virtual bool Fragment(vec3 barycentric, QRgb& outColor) override {
-        return true;
+        vec3 rayDir = {0, 0, 0};
+        for (int i = 0; i < 3; ++i) {
+            rayDir = rayDir + barycentric[i] * vertOutput[i].rayDir;
+        }
+        rayDir.normalize();
+        Ray ray(CAMERA_POS, rayDir);
+
+        // 光线碰撞检测
+        HitResult hitResult;
+        if (!modelAccel->Intersect(ray, hitResult)) {   // 没有光线碰撞则clip掉
+            return true;
+        }
+
+        // 开始正式的frag计算
+        int faceIdx = hitResult.hitIdx;
+        vec3 bar = hitResult.barycentric;
+        vec3 normal = {0, 0, 0};
+        vec2 uv = {0, 0};
+        vec3 worldPos = {0, 0, 0};
+        for (int i = 0; i < 3; ++i) {
+            normal = normal + bar[i] * model->normal(faceIdx, i);
+            uv = uv + bar[i] * model->uv(faceIdx, i);
+            worldPos = worldPos + bar[i] * model->vert(faceIdx, i);
+        }
+        normal.normalize();
+        vec3 lightDir = (LIGHT0.w == 0) ? embed<3>(LIGHT0) : (embed<3>(LIGHT0) - worldPos).normalize();
+        vec3 viewDir = (-rayDir).normalize();
+        vec3 halfDir = (lightDir + viewDir).normalize();
+        float diff = clamp01(lightDir * normal);
+        float spec = std::pow(clamp01(halfDir * normal), 16);
+        float ambient = 0.3f;
+        vec3 col = clamp01((ambient + diff + spec) * vec3(1, 1, 1));
+        col = col * 255.f;
+
+        outColor = (255 << 24) | ((uint8_t)col[0] << 16) | ((uint8_t)col[1] << 8) | (uint8_t)col[2];
+        return false;
     }
 
 

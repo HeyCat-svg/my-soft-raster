@@ -1,5 +1,8 @@
 #include "widget.h"
 
+// #define SOFT_RASTER
+#define RAY_TRACER
+
 Model africanHeadModel("./obj/diablo3_pose/diablo3_pose.obj");
 
 SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
@@ -47,6 +50,17 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
     SetProjectionMatrix(m_PointLight->GetProjectionMatrix());
     m_PointLight->SetWorld2Light(VP_MATRIX);
 
+    // 初始化模型加速结构
+    m_ModelAccel = new Accel(&africanHeadModel);
+    m_ModelAccel->Build();
+    qDebug() << "face number: " << africanHeadModel.nfaces();
+    Ray ray = {{0, 0, 1}, {0, 0, -1}};
+    HitResult hitResult;
+    m_ModelAccel->Intersect(ray, hitResult);
+    qDebug() << hitResult.t << '\t' << hitResult.hitIdx << '\t' << hitResult.barycentric.x << ' ' <<
+                hitResult.barycentric.y << ' ' << hitResult.barycentric.z << '\t' <<
+                hitResult.hitPoint.x << ' ' << hitResult.hitPoint.y << ' ' << hitResult.hitPoint.z;
+
     // 加载资源与生成shader
     TGAImage* diffuseImg = new TGAImage();
     diffuseImg->read_tga_file("./obj/diablo3_pose/diablo3_pose_diffuse.tga");
@@ -66,6 +80,7 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
     m_ShadowMapShader = new ShadowMapShader(&africanHeadModel);
     m_HBAOShader = new HBAOShader(&africanHeadModel, m_Zbuffer1, m_WindowWidth, m_WindowHeight);
     m_ZWriteShader = new ZWriteShader(&africanHeadModel);
+    m_RayTracerShader = new RayTracerShader(&africanHeadModel, m_ModelAccel);
 
     // start repaint timer
     m_RepaintTimer = startTimer(m_RepaintInterval);
@@ -84,6 +99,8 @@ SoftRaster::~SoftRaster() {
     delete m_ShadowMapShader;
     delete m_HBAOShader;
     delete m_ZWriteShader;
+    delete m_RayTracerShader;
+    delete m_ModelAccel;
     delete m_PointLight;
     delete m_Camera;
 }
@@ -114,6 +131,8 @@ void SoftRaster::paintEvent(QPaintEvent*) {
         }
     }
 
+///////////////////////////////////////// SOFT RASTER START ////////////////////////////
+#ifdef SOFT_RASTER
     /// HBAO rendering
     // Pass 0: z write
     {
@@ -186,6 +205,23 @@ void SoftRaster::paintEvent(QPaintEvent*) {
             Triangle(clipPts, m_Shader, m_PixelBuffer, m_Zbuffer);
         }
     }
+#endif
+///////////////////////////////// SOFT RASTER END /////////////////////////////
+
+///////////////////////////////// RAY TRACER START ////////////////////////////
+#ifdef RAY_TRACER
+    SetViewMatrix(m_Camera->GetViewMatrix());
+    SetProjectionMatrix(m_Camera->GetProjectionMatrix());
+    // 光栅化的步骤是为了插值ray 实际只有两个三角面片构成的长方形mesh
+    for (int i = 0; i < 2; ++i) {
+        vec4 clipPts[3];
+        for (int j = 0; j < 3; ++j) {
+            clipPts[j] = m_RayTracerShader->Vertex(i, j);
+        }
+        Triangle(clipPts, m_RayTracerShader, m_PixelBuffer, m_Zbuffer);
+    }
+#endif
+///////////////////////////////// RAY TRACER END ////////////////////////////
 
     // timer end
     QueryPerformanceCounter(&endTime);
