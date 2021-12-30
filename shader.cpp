@@ -4,6 +4,7 @@ mat4x4 MODEL_MATRIX;
 mat4x4 MODEL_INVERSE_TRANSPOSE_MATRIX;      // model的逆转置矩阵
 mat4x4 VIEW_MATRIX;
 mat4x4 V_TRANSPOSE_MATRIX;
+mat4x4 V_INVERSE_MATRIX;
 mat4x4 MV_INVERSE_TRANSPOSE_MATRIX;         // (view * model)的逆转置矩阵
 mat4x4 PROJ_MATRIX;
 mat4x4 VP_MATRIX;
@@ -26,6 +27,7 @@ void SetViewMatrix(const mat4x4& mat) {
 
     MV_INVERSE_TRANSPOSE_MATRIX = (VIEW_MATRIX * MODEL_MATRIX).invert_transpose();
     V_TRANSPOSE_MATRIX = VIEW_MATRIX.transpose();
+    V_INVERSE_MATRIX = VIEW_MATRIX.invert();
 }
 
 void SetViewMatrix(const vec3& cameraPos, const mat4x4& lookAtMat) {
@@ -104,6 +106,30 @@ vec3 GetNDC(vec2 ndcXY, float* zbuffer, int zbufferWidth, int zbufferHeight) {
  */
 vec3 Reflect(const vec3& inLightDir, const vec3& normal) {
     return 2.f * (inLightDir * normal) * normal - inLightDir;
+}
+
+/* in  normal
+ *  |\ |\
+ *    \|
+ */
+vec3 Refract(const vec3& inLightDir, vec3 normal, float refractiveIndex) {
+    float cosIn = inLightDir * normal;
+    float nIn, nOut;    // 入射光线和出射光线的折射率
+    if (cosIn > 0) {        // 从外部空气射入
+        nIn = 1.f;
+        nOut = refractiveIndex;
+    }
+    else {                  // 从模型内部射出
+        nIn = refractiveIndex;
+        nOut = 1.f;
+        cosIn = -cosIn;     // cosIn始终大于0
+        normal = -normal;   // normal始终指向入射光线一侧
+    }
+    float rate = nIn / nOut;    // 折射率之比
+    float cosOutSqr = 1.f - rate * rate * (1.f - cosIn * cosIn);
+
+    // 当rate>1时 有一段是全反射而没有折射 因此此时折射角不存在 返回一个标记值
+    return (cosOutSqr < 0) ? vec3(2, 0, 0) : (-rate * inLightDir + (rate * cosIn - std::sqrt(cosOutSqr)) * normal).normalize();
 }
 
 float clamp01(float v) {

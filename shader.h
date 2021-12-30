@@ -15,6 +15,7 @@ extern mat4x4 MODEL_MATRIX;                         // model to world
 extern mat4x4 MODEL_INVERSE_TRANSPOSE_MATRIX;       // model的逆转置矩阵
 extern mat4x4 VIEW_MATRIX;                          // world to view
 extern mat4x4 V_TRANSPOSE_MATRIX;
+extern mat4x4 V_INVERSE_MATRIX;
 extern mat4x4 MV_INVERSE_TRANSPOSE_MATRIX;
 extern mat4x4 PROJ_MATRIX;                          // view to clip space
 extern mat4x4 VP_MATRIX;                            // proj * view
@@ -33,6 +34,7 @@ vec3 CoordNDCToView(const vec3& p);
 vec3 CoordNDCToView(vec3 p, int);           // int 用于区分参数是否引用
 vec3 GetNDC(vec2 ndcXY, float* zbuffer, int zbufferWidth, int zbufferHeight);
 vec3 Reflect(const vec3& inLightDir, const vec3& normal);
+vec3 Refract(const vec3& inLightDir, vec3 normal, float refractiveIndex);
 float clamp01(float v);
 template<int n> vec<n> clamp01(vec<n> v) {
     vec<n> ret;
@@ -334,6 +336,8 @@ public:
 };
 
 class RayTracerShader : public IShader {
+    const int MAX_DEPTH = 4;        // 光线追踪的最深递归深度 最多计算MAX_DEPTH次反射
+
     vec3 screenMesh[2][3] = {
         {{-1.f, 1.f, 1.f}, {-1.f, -1.f, 1.f}, {1.f, -1.f, 1.f}},
         {{-1.f, 1.f, 1.f}, {1.f, -1.f, 1.f}, {1.f, 1.f, 1.f}}
@@ -348,6 +352,28 @@ class RayTracerShader : public IShader {
 
     v2f vertOutput[3];
 
+    vec3 CastRay(const Ray& ray, int depth = 0) {
+        HitResult hitResult;
+
+        if (!modelAccel->Intersect(ray, hitResult) || depth > MAX_DEPTH) {
+            return vec3(0, 0, 0);   // 将来要替换成天空盒
+        }
+        int faceIdx = hitResult.hitIdx;
+        vec3 bar = hitResult.barycentric;
+        vec3 normal = {0, 0, 0};
+        vec2 uv = {0, 0};
+        vec3 worldPos = {0, 0, 0};
+        for (int i = 0; i < 3; ++i) {
+            normal = normal + bar[i] * model->normal(faceIdx, i);
+            uv = uv + bar[i] * model->uv(faceIdx, i);
+            worldPos = worldPos + bar[i] * model->vert(faceIdx, i);
+        }
+        normal.normalize();
+
+
+        return vec3(0, 0, 0);
+    }
+
 public:
     RayTracerShader(Model* _model, Accel* _modelAccel, float _fov=PI/3, float _aspect=1.f) :
         model(_model), modelAccel(_modelAccel), fov(_fov), aspect(_aspect)
@@ -361,8 +387,8 @@ public:
         v2f o;
         const vec3& meshP = screenMesh[iface][nthvert];
         o.rayDir = vec3(meshP.x * halfWidth, meshP.y * halfHeight, -1.f);
-        // view的逆矩阵的逆转置矩阵就是view的转置 将向量从view到world
-        o.rayDir = proj<3>(V_TRANSPOSE_MATRIX * embed<4>(o.rayDir, 0)).normalize();
+        // view的逆矩阵的逆转置矩阵就是view的转置->xxx 逆转置用于转换法向量的 将向量从view到world
+        o.rayDir = proj<3>(V_INVERSE_MATRIX * embed<4>(o.rayDir, 0)).normalize();
         vertOutput[nthvert] = o;
         return vec4(meshP.x, -meshP.y, meshP.z, 1.f);
     }
@@ -396,10 +422,12 @@ public:
         vec3 lightDir = (LIGHT0.w == 0) ? embed<3>(LIGHT0) : (embed<3>(LIGHT0) - worldPos).normalize();
         vec3 viewDir = (-rayDir).normalize();
         vec3 halfDir = (lightDir + viewDir).normalize();
+        Ray lightRay(worldPos + lightDir * 1e-3, lightDir);
         float diff = clamp01(lightDir * normal);
         float spec = std::pow(clamp01(halfDir * normal), 16);
         float ambient = 0.3f;
-        vec3 col = clamp01((ambient + diff + spec) * vec3(1, 1, 1));
+        float shadow = (modelAccel->Intersect(lightRay, hitResult, true) == false);
+        vec3 col = clamp01((ambient + shadow * (diff + spec)) * vec3(1, 1, 1));
         col = col * 255.f;
 
         outColor = (255 << 24) | ((uint8_t)col[0] << 16) | ((uint8_t)col[1] << 8) | (uint8_t)col[2];
