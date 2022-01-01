@@ -11,6 +11,12 @@
 
 ///////////////////////////////////////// SHADER ENV ////////////////////////////
 
+struct ShaderLight {
+    vec4 lightPos;
+    vec3 lightColor;
+    float intensity;
+};
+
 extern mat4x4 MODEL_MATRIX;                         // model to world
 extern mat4x4 MODEL_INVERSE_TRANSPOSE_MATRIX;       // model的逆转置矩阵
 extern mat4x4 VIEW_MATRIX;                          // world to view
@@ -20,6 +26,7 @@ extern mat4x4 MV_INVERSE_TRANSPOSE_MATRIX;
 extern mat4x4 PROJ_MATRIX;                          // view to clip space
 extern mat4x4 VP_MATRIX;                            // proj * view
 extern vec4 LIGHT0;                                 // 向量或位置 区别在于w分量1or0
+extern std::vector<ShaderLight> LIGHTS;
 extern vec3 CAMERA_POS;
 extern vec4 _ProjectionParams;                       // x=1.0(或-1.0 表示y反转了) y=1/near z=1/far w=(1/far-1/near)
 
@@ -355,7 +362,7 @@ class RayTracerShader : public IShader {
     vec3 CastRay(const Ray& ray, int depth = 0) {
         HitResult hitResult;
 
-        if (!modelAccel->Intersect(ray, hitResult) || depth > MAX_DEPTH) {
+        if (depth > MAX_DEPTH || !modelAccel->Intersect(ray, hitResult)) {
             return vec3(0, 0, 0);   // 将来要替换成天空盒
         }
         int faceIdx = hitResult.hitIdx;
@@ -370,6 +377,22 @@ class RayTracerShader : public IShader {
         }
         normal.normalize();
 
+        vec3 reflectDir = Reflect(ray.dir, normal).normalize();
+        Ray reflectRay(worldPos, reflectDir);
+        vec3 refractDir = Refract(ray.dir, normal, 1.333f);     // 折射率1.333 玻璃
+        Ray refractRay(worldPos, reflectDir);
+
+        vec3 reflectColor, refractColor;
+        reflectColor = CastRay(reflectRay);
+        if (refractRay.dir.x > 1) {
+            refractColor = vec3(0, 0, 0);
+        }
+        else {
+            refractColor = CastRay(refractRay);
+        }
+
+        // 开始计算当前光线碰撞点的颜色
+        int lightNum = LIGHTS.size();
 
         return vec3(0, 0, 0);
     }

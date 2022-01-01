@@ -9,6 +9,7 @@ mat4x4 MV_INVERSE_TRANSPOSE_MATRIX;         // (view * model)的逆转置矩阵
 mat4x4 PROJ_MATRIX;
 mat4x4 VP_MATRIX;
 vec4 LIGHT0;
+std::vector<ShaderLight> LIGHTS;                   // 光源信息数组
 vec3 CAMERA_POS;
 vec4 _ProjectionParams;                      // x=1.0(或-1.0 表示y反转了) y=1/near z=1/far w=(1/far-1/near)
 
@@ -101,19 +102,19 @@ vec3 GetNDC(vec2 ndcXY, float* zbuffer, int zbufferWidth, int zbufferHeight) {
 }
 
 /* in  normal
- *  |\ |\
- *    \|
+ *   \ |\
+ *   _\|
  */
 vec3 Reflect(const vec3& inLightDir, const vec3& normal) {
-    return 2.f * (inLightDir * normal) * normal - inLightDir;
+    return 2.f * (-inLightDir * normal) * normal - inLightDir;
 }
 
 /* in  normal
- *  |\ |\
- *    \|
+ *   \ |\
+ *   _\|
  */
 vec3 Refract(const vec3& inLightDir, vec3 normal, float refractiveIndex) {
-    float cosIn = inLightDir * normal;
+    float cosIn = -inLightDir * normal;
     float nIn, nOut;    // 入射光线和出射光线的折射率
     if (cosIn > 0) {        // 从外部空气射入
         nIn = 1.f;
@@ -129,7 +130,7 @@ vec3 Refract(const vec3& inLightDir, vec3 normal, float refractiveIndex) {
     float cosOutSqr = 1.f - rate * rate * (1.f - cosIn * cosIn);
 
     // 当rate>1时 有一段是全反射而没有折射 因此此时折射角不存在 返回一个标记值
-    return (cosOutSqr < 0) ? vec3(2, 0, 0) : (-rate * inLightDir + (rate * cosIn - std::sqrt(cosOutSqr)) * normal).normalize();
+    return (cosOutSqr < 0) ? vec3(2, 0, 0) : (rate * inLightDir + (rate * cosIn - std::sqrt(cosOutSqr)) * normal).normalize();
 }
 
 float clamp01(float v) {
