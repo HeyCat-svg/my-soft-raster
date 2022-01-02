@@ -50,6 +50,12 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
     SetProjectionMatrix(m_PointLight->GetProjectionMatrix());
     m_PointLight->SetWorld2Light(VP_MATRIX);
 
+    // 设置光源数组
+    ShaderLight lights[2];
+    lights[0] = {{-1.f, 1.f, 1.f, 1.f}, {1, 1, 1}, 1.2f};
+    lights[1] = {{1.f, 1.f, 1.f, 1.f}, {1, 1, 1}, 1.2f};
+    SetLightArray(lights, 2);
+
     // 初始化模型加速结构
     m_ModelAccel = new Accel(&africanHeadModel);
     m_ModelAccel->Build();

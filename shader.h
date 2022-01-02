@@ -35,6 +35,7 @@ void SetViewMatrix(const mat4x4& mat);
 void SetViewMatrix(const vec3& cameraPos, const mat4x4& lookAtMat);
 void SetProjectionMatrix(const mat4x4& mat);
 void SetCameraAndLight(vec3 cameraPos, vec4 light);
+void SetLightArray(const ShaderLight* lights, int n);
 vec3 NormalObjectToWorld(const vec3& n);
 vec3 NormalObjectToView(const vec3& n);
 vec3 CoordNDCToView(const vec3& p);
@@ -377,24 +378,42 @@ class RayTracerShader : public IShader {
         }
         normal.normalize();
 
+        // 计算反射光线
         vec3 reflectDir = Reflect(ray.dir, normal).normalize();
-        Ray reflectRay(worldPos, reflectDir);
-        vec3 refractDir = Refract(ray.dir, normal, 1.333f);     // 折射率1.333 玻璃
-        Ray refractRay(worldPos, reflectDir);
+        vec3 reflectOri = (reflectDir * normal < 0) ? worldPos - normal * 1e-3 : worldPos + normal * 1e-3;
+        Ray reflectRay(reflectOri, reflectDir);
+        vec3 reflectColor = CastRay(reflectRay, depth + 1);
 
-        vec3 reflectColor, refractColor;
-        reflectColor = CastRay(reflectRay);
-        if (refractRay.dir.x > 1) {
+        // 计算折射光线
+        vec3 refractColor;
+        vec3 refractDir = Refract(ray.dir, normal, 1.333f);     // 折射率1.333 玻璃
+        if (refractDir.x > 1) {
             refractColor = vec3(0, 0, 0);
         }
         else {
-            refractColor = CastRay(refractRay);
+            vec3 refractOri = (refractDir * normal < 0) ? worldPos - normal * 1e-3 : worldPos + normal * 1e-3;
+            Ray refractRay(refractOri, refractDir);
+            refractColor = CastRay(refractRay, depth + 1);
         }
 
         // 开始计算当前光线碰撞点的颜色
+        float diff = 0, spec = 0;
         int lightNum = LIGHTS.size();
+        for (int i = 0; i < lightNum; ++i) {
+            const ShaderLight& light = LIGHTS[i];
+            vec3 lightDir = (light.lightPos.w == 0) ? embed<3>(light.lightPos) : (embed<3>(light.lightPos) - worldPos).normalize();
+            vec3 viewDir = (-ray.dir).normalize();
+            vec3 halfDir = (lightDir + viewDir).normalize();
+            Ray lightRay(worldPos + lightDir * 1e-3, lightDir);
+            HitResult trashResult;
+            if (modelAccel->Intersect(lightRay, trashResult, true)) {
+                continue;
+            }
+            diff += clamp01(lightDir * normal) * light.intensity;
+            spec += std::pow(clamp01(halfDir * normal), 125) * light.intensity;
+        }
 
-        return vec3(0, 0, 0);
+        return vec3(0.6, 0.7, 0.8) * diff * 0.0f + vec3(1, 1, 1) * spec * 0.5f + reflectColor * 0.1f + refractColor * 0.8f;
     }
 
 public:
@@ -424,33 +443,8 @@ public:
         rayDir.normalize();
         Ray ray(CAMERA_POS, rayDir);
 
-        // 光线碰撞检测
-        HitResult hitResult;
-        if (!modelAccel->Intersect(ray, hitResult)) {   // 没有光线碰撞则clip掉
-            return true;
-        }
+        vec3 col = clamp01(CastRay(ray));
 
-        // 开始正式的frag计算
-        int faceIdx = hitResult.hitIdx;
-        vec3 bar = hitResult.barycentric;
-        vec3 normal = {0, 0, 0};
-        vec2 uv = {0, 0};
-        vec3 worldPos = {0, 0, 0};
-        for (int i = 0; i < 3; ++i) {
-            normal = normal + bar[i] * model->normal(faceIdx, i);
-            uv = uv + bar[i] * model->uv(faceIdx, i);
-            worldPos = worldPos + bar[i] * model->vert(faceIdx, i);
-        }
-        normal.normalize();
-        vec3 lightDir = (LIGHT0.w == 0) ? embed<3>(LIGHT0) : (embed<3>(LIGHT0) - worldPos).normalize();
-        vec3 viewDir = (-rayDir).normalize();
-        vec3 halfDir = (lightDir + viewDir).normalize();
-        Ray lightRay(worldPos + lightDir * 1e-3, lightDir);
-        float diff = clamp01(lightDir * normal);
-        float spec = std::pow(clamp01(halfDir * normal), 16);
-        float ambient = 0.3f;
-        float shadow = (modelAccel->Intersect(lightRay, hitResult, true) == false);
-        vec3 col = clamp01((ambient + shadow * (diff + spec)) * vec3(1, 1, 1));
         col = col * 255.f;
 
         outColor = (255 << 24) | ((uint8_t)col[0] << 16) | ((uint8_t)col[1] << 8) | (uint8_t)col[2];

@@ -69,6 +69,13 @@ void SetCameraAndLight(vec3 cameraPos, vec4 light) {
     LIGHT0 = light;
 }
 
+void SetLightArray(const ShaderLight* lights, int n) {
+    LIGHTS.clear();
+    for (int i = 0; i < n; ++i) {
+        LIGHTS.push_back(lights[i]);
+    }
+}
+
 vec3 NormalObjectToWorld(const vec3& n) {
     return proj<3>(MODEL_INVERSE_TRANSPOSE_MATRIX * embed<4>(n, 0));
 }
