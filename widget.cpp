@@ -1,4 +1,5 @@
 #include "widget.h"
+#include "skybox.h"
 
 // #define SOFT_RASTER
 #define RAY_TRACER
@@ -36,7 +37,7 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
 
     // 设置相机参数
     vec3 worldUp(0, 1, 0);
-    vec3 cameraPos(0.5f, 0.5f, 2.5f);       // 0.5 0.5 2.5
+    vec3 cameraPos(0.5f, 0.5f, 2.f);       // 0.5 0.5 2.5
     vec3 lookDir = vec3(0, 0, 0) - cameraPos;
     m_Camera = new Camera(cameraPos, lookDir, PI / 3.f, 1.f, 0.3f, 10.f);
 
@@ -77,6 +78,7 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
     TGAImage* specImg = new TGAImage();
     specImg->read_tga_file("./obj/diablo3_pose/diablo3_pose_spec.tga");
     specImg->flip_vertically();
+    Skybox* skybox = new Skybox("./resources/skybox/skybox");
     m_Shader = new GeneralShader(
                 &africanHeadModel, diffuseImg, normalImg, specImg,
                 new QImage((uchar*)m_ShadowMap, m_WindowWidth, m_WindowHeight, QImage::Format_ARGB32),
@@ -86,7 +88,7 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
     m_ShadowMapShader = new ShadowMapShader(&africanHeadModel);
     m_HBAOShader = new HBAOShader(&africanHeadModel, m_Zbuffer1, m_WindowWidth, m_WindowHeight);
     m_ZWriteShader = new ZWriteShader(&africanHeadModel);
-    m_RayTracerShader = new RayTracerShader(&africanHeadModel, m_ModelAccel);
+    m_RayTracerShader = new RayTracerShader(&africanHeadModel, m_ModelAccel, skybox);
 
     // start repaint timer
     m_RepaintTimer = startTimer(m_RepaintInterval);

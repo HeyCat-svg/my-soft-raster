@@ -38,6 +38,8 @@ set(PROJECT_SOURCES
         shader.cpp
         model.cpp
         model.h
+        skybox.cpp
+        skybox.h
         tgaimage.cpp
         tgaimage.h
         accel.cpp

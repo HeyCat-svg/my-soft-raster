@@ -5,6 +5,7 @@
 #include "tgaimage.h"
 #include "model.h"
 #include "accel.h"
+#include "skybox.h"
 #include <QRgb>
 #include <QImage>
 #include <cstdlib>
@@ -353,6 +354,7 @@ class RayTracerShader : public IShader {
     float fov, aspect, halfWidth, halfHeight;
     Accel* modelAccel;      // 模型三角面片搜索加速结构
     Model* model;
+    Skybox* skybox;
 
     struct v2f {
         vec3 rayDir;
@@ -364,7 +366,7 @@ class RayTracerShader : public IShader {
         HitResult hitResult;
 
         if (depth > MAX_DEPTH || !modelAccel->Intersect(ray, hitResult)) {
-            return vec3(0, 0, 0);   // 将来要替换成天空盒
+            return skybox->GetColor(ray.dir);   // 将来要替换成天空盒
         }
         int faceIdx = hitResult.hitIdx;
         vec3 bar = hitResult.barycentric;
@@ -386,7 +388,7 @@ class RayTracerShader : public IShader {
 
         // 计算折射光线
         vec3 refractColor;
-        vec3 refractDir = Refract(ray.dir, normal, 1.333f);     // 折射率1.333 玻璃
+        vec3 refractDir = Refract(ray.dir, normal, 1.f);     // 折射率1.333 玻璃
         if (refractDir.x > 1) {
             refractColor = vec3(0, 0, 0);
         }
@@ -413,12 +415,12 @@ class RayTracerShader : public IShader {
             spec += std::pow(clamp01(halfDir * normal), 125) * light.intensity;
         }
 
-        return vec3(0.6, 0.7, 0.8) * diff * 0.0f + vec3(1, 1, 1) * spec * 0.5f + reflectColor * 0.1f + refractColor * 0.8f;
+        return clamp01(vec3(0.6, 0.7, 0.8) * diff * 0.0f + vec3(1, 1, 1) * spec * 0.5f + reflectColor * 0.1f + refractColor * 0.8f);
     }
 
 public:
-    RayTracerShader(Model* _model, Accel* _modelAccel, float _fov=PI/3, float _aspect=1.f) :
-        model(_model), modelAccel(_modelAccel), fov(_fov), aspect(_aspect)
+    RayTracerShader(Model* _model, Accel* _modelAccel, Skybox* _skybox, float _fov=PI/3, float _aspect=1.f) :
+        model(_model), modelAccel(_modelAccel), skybox(_skybox), fov(_fov), aspect(_aspect)
     {
         halfWidth = aspect * std::tan(fov / 2.f);
         halfHeight = std::tan(fov / 2.f);
@@ -443,7 +445,7 @@ public:
         rayDir.normalize();
         Ray ray(CAMERA_POS, rayDir);
 
-        vec3 col = clamp01(CastRay(ray));
+        vec3 col = CastRay(ray);
 
         col = col * 255.f;
 
