@@ -345,7 +345,7 @@ public:
 };
 
 class RayTracerShader : public IShader {
-    const int MAX_DEPTH = 4;        // 光线追踪的最深递归深度 最多计算MAX_DEPTH次反射
+    const int MAX_DEPTH = 5;        // 光线追踪的最深递归深度 最多计算MAX_DEPTH次反射
 
     vec3 screenMesh[2][3] = {
         {{-1.f, 1.f, 1.f}, {-1.f, -1.f, 1.f}, {1.f, -1.f, 1.f}},
@@ -365,7 +365,7 @@ class RayTracerShader : public IShader {
     vec3 CastRay(const Ray& ray, int depth = 0) {
         HitResult hitResult;
 
-        if (depth > MAX_DEPTH || !modelAccel->Intersect(ray, hitResult)) {
+        if (depth >= MAX_DEPTH || !modelAccel->Intersect(ray, hitResult)) {
             return skybox->GetColor(ray.dir);   // 将来要替换成天空盒
         }
         int faceIdx = hitResult.hitIdx;
@@ -388,7 +388,7 @@ class RayTracerShader : public IShader {
 
         // 计算折射光线
         vec3 refractColor;
-        vec3 refractDir = Refract(ray.dir, normal, 1.f);     // 折射率1.333 玻璃
+        vec3 refractDir = Refract(ray.dir, normal, 1.33f);     // 折射率1.333 玻璃
         if (refractDir.x > 1) {
             refractColor = vec3(0, 0, 0);
         }
@@ -415,7 +415,7 @@ class RayTracerShader : public IShader {
             spec += std::pow(clamp01(halfDir * normal), 125) * light.intensity;
         }
 
-        return clamp01(vec3(0.6, 0.7, 0.8) * diff * 0.0f + vec3(1, 1, 1) * spec * 0.5f + reflectColor * 0.1f + refractColor * 0.8f);
+        return clamp01(vec3(0.4f, 0.4f, 0.3f) * diff * 0.f + vec3(1, 1, 1) * spec * 0.5f + reflectColor * 0.1f + refractColor * 0.8f);
     }
 
 public:

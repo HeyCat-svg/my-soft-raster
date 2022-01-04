@@ -37,7 +37,7 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
 
     // 设置相机参数
     vec3 worldUp(0, 1, 0);
-    vec3 cameraPos(0.5f, 0.5f, 2.f);       // 0.5 0.5 2.5
+    vec3 cameraPos(-0.5f, 0.5f, 2.f);       // 0.5 0.5 2.5  -0.5 0.5 2.0
     vec3 lookDir = vec3(0, 0, 0) - cameraPos;
     m_Camera = new Camera(cameraPos, lookDir, PI / 3.f, 1.f, 0.3f, 10.f);
 
