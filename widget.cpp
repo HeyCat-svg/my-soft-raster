@@ -4,7 +4,9 @@
 // #define SOFT_RASTER
 #define RAY_TRACER
 
-Model africanHeadModel("./obj/diablo3_pose/diablo3_pose.obj");
+// "./obj/diablo3_pose/diablo3_pose.obj"
+// "./obj/cornell_box/cornell_box.obj"
+Model africanHeadModel("./obj/cornell_box/cornell_box.obj");
 
 SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
     this->setParent(parent);
@@ -37,7 +39,7 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
 
     // 设置相机参数
     vec3 worldUp(0, 1, 0);
-    vec3 cameraPos(-0.5f, 0.5f, 2.f);       // 0.5 0.5 2.5  -0.5 0.5 2.0
+    vec3 cameraPos(0.f, 0.f, 3.f);       // 0.5 0.5 2.5  -0.5 0.5 2.0
     vec3 lookDir = vec3(0, 0, 0) - cameraPos;
     m_Camera = new Camera(cameraPos, lookDir, PI / 3.f, 1.f, 0.3f, 10.f);
 
@@ -53,20 +55,14 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
 
     // 设置光源数组
     ShaderLight lights[2];
-    lights[0] = {{-1.f, 1.f, 1.f, 1.f}, {1, 1, 1}, 1.2f};
-    lights[1] = {{1.f, 1.f, 1.f, 1.f}, {1, 1, 1}, 1.2f};
+    lights[0] = {{-0.5f, 0.5f, 0.5f, 1.f}, {1, 1, 1}, 1.2f};
+    lights[1] = {{0.5f, 0.5f, 0.5f, 1.f}, {1, 1, 1}, 1.2f};
     SetLightArray(lights, 2);
 
     // 初始化模型加速结构
     m_ModelAccel = new Accel(&africanHeadModel);
     m_ModelAccel->Build();
     qDebug() << "face number: " << africanHeadModel.nfaces();
-    Ray ray = {{0, 0, 1}, {0, 0, -1}};
-    HitResult hitResult;
-    m_ModelAccel->Intersect(ray, hitResult);
-    qDebug() << hitResult.t << '\t' << hitResult.hitIdx << '\t' << hitResult.barycentric.x << ' ' <<
-                hitResult.barycentric.y << ' ' << hitResult.barycentric.z << '\t' <<
-                hitResult.hitPoint.x << ' ' << hitResult.hitPoint.y << ' ' << hitResult.hitPoint.z;
 
     // 加载资源与生成shader
     TGAImage* diffuseImg = new TGAImage();

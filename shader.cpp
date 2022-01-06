@@ -139,7 +139,3 @@ vec3 Refract(const vec3& inLightDir, vec3 normal, float refractiveIndex) {
     // 当rate>1时 有一段是全反射而没有折射 因此此时折射角不存在 返回一个标记值
     return (cosOutSqr < 0) ? vec3(2, 0, 0) : (rate * inLightDir + (rate * cosIn - std::sqrt(cosOutSqr)) * normal).normalize();
 }
-
-float clamp01(float v) {
-    return (v > 1.f) ? 1.f : ((v < 0.f) ? 0.f : v);
-}

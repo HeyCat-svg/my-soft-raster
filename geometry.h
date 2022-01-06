@@ -104,6 +104,18 @@ vec<n> mul(const vec<n>& lhs, const vec<n>& rhs) {
 }
 
 template<int n>
+vec<n> lerp(const vec<n>& a, const vec<n>& b, float t) {
+    return a * (1 - t) + b * t;
+}
+
+template<int n>
+vec<n> clamp01(vec<n> v) {
+    vec<n> ret;
+    for (int i = n; i--; ret[i] = (v[i] > 1.f) ? 1.f : ((v[i] < 0.f) ? 0.f : v[i]));
+    return ret;
+}
+
+template<int n>
 std::ostream& operator<<(std::ostream& out, const vec<n>& v) {
     for (int i = 0; i < n; ++i) out << v[i] << " ";
     return out;
@@ -371,6 +383,7 @@ typedef mat<3, 3> mat3x3;
 enum ProjectionType {ORTH, PERSP};
 
 vec3 cross(const vec3& v1, const vec3& v2);
+float clamp01(float v);
 mat4x4 TRS(vec3& translate, vec3& rotation, vec3& scale);   // 构造MODEL_MATRIX
 mat4x4 LookAt(vec3& dir, vec3& up);
 mat4x4 Projection(ProjectionType type, float znear, float zfar, float top, float down, float left, float right);

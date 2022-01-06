@@ -8,6 +8,10 @@ vec3 cross(const vec3& v1, const vec3& v2) {
     return ret;
 }
 
+float clamp01(float v) {
+    return (v > 1.f) ? 1.f : ((v < 0.f) ? 0.f : v);
+}
+
 Quaternion operator*(const Quaternion& lhs, const Quaternion& rhs) {
     Quaternion ret;
     ret.v = lhs.s * rhs.v + rhs.s * lhs.v + cross(lhs.v, rhs.v);

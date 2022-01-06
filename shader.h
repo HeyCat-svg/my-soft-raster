@@ -44,12 +44,6 @@ vec3 CoordNDCToView(vec3 p, int);           // int 用于区分参数是否引�
 vec3 GetNDC(vec2 ndcXY, float* zbuffer, int zbufferWidth, int zbufferHeight);
 vec3 Reflect(const vec3& inLightDir, const vec3& normal);
 vec3 Refract(const vec3& inLightDir, vec3 normal, float refractiveIndex);
-float clamp01(float v);
-template<int n> vec<n> clamp01(vec<n> v) {
-    vec<n> ret;
-    for (int i = n; i--; ret[i] = (v[i] > 1.f) ? 1.f : ((v[i] < 0.f) ? 0.f : v[i]));
-    return ret;
-}
 
 /////////////////////////////////////////////////////////////////////////////////
 
@@ -403,19 +397,21 @@ class RayTracerShader : public IShader {
         int lightNum = LIGHTS.size();
         for (int i = 0; i < lightNum; ++i) {
             const ShaderLight& light = LIGHTS[i];
-            vec3 lightDir = (light.lightPos.w == 0) ? embed<3>(light.lightPos) : (embed<3>(light.lightPos) - worldPos).normalize();
+            vec3 lightPos = embed<3>(light.lightPos);
+            vec3 lightDir = (light.lightPos.w == 0) ? lightPos : (lightPos - worldPos).normalize();
             vec3 viewDir = (-ray.dir).normalize();
             vec3 halfDir = (lightDir + viewDir).normalize();
             Ray lightRay(worldPos + lightDir * 1e-3, lightDir);
-            HitResult trashResult;
-            if (modelAccel->Intersect(lightRay, trashResult, true)) {
+            HitResult shadowHitResult;
+            if (modelAccel->Intersect(lightRay, shadowHitResult, false) &&
+                    (shadowHitResult.hitPoint - worldPos).norm() < (lightPos - worldPos).norm()) {
                 continue;
             }
             diff += clamp01(lightDir * normal) * light.intensity;
             spec += std::pow(clamp01(halfDir * normal), 125) * light.intensity;
         }
 
-        return clamp01(vec3(0.4f, 0.4f, 0.3f) * diff * 0.f + vec3(1, 1, 1) * spec * 0.5f + reflectColor * 0.1f + refractColor * 0.8f);
+        return clamp01(vec3(0.4f, 0.4f, 0.3f) * diff * 0.9f + vec3(1, 1, 1) * spec * 0.1f + reflectColor * 0.f + refractColor * 0.f);
     }
 
 public:

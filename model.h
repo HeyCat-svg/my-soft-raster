@@ -5,6 +5,8 @@
 #include <string>
 #include "geometry.h"
 #include "tgaimage.h"
+#include "material.h"
+
 
 class Model {
 private:

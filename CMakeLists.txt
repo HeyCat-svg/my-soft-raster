@@ -44,6 +44,8 @@ set(PROJECT_SOURCES
         tgaimage.h
         accel.cpp
         accel.h
+        material.cpp
+        material.h
         geometry.cpp
         geometry.h
 )
