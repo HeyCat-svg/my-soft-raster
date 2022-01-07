@@ -42,6 +42,10 @@ set(PROJECT_SOURCES
         skybox.h
         tgaimage.cpp
         tgaimage.h
+        object.cpp
+        object.h
+        world.cpp
+        world.h
         accel.cpp
         accel.h
         material.cpp

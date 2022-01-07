@@ -420,14 +420,14 @@ struct BoundingBox3f {
     BoundingBox3f(vec3 _minPoint, vec3 _maxPoint) : minPoint(_minPoint), maxPoint(_maxPoint) {
         center = (minPoint + maxPoint) * 0.5f;
     }
-    bool Overlaps(const BoundingBox3f& inBox) {
+    bool Overlaps(const BoundingBox3f& inBox) const {
         return (inBox.minPoint.x >= minPoint.x) && (inBox.minPoint.y >= minPoint.y) && (inBox.minPoint.z >= minPoint.z) &&
                (inBox.maxPoint.x <= maxPoint.x) && (inBox.maxPoint.y <= maxPoint.y) && (inBox.maxPoint.z <= maxPoint.z);
     }
     vec3 GetCenter() const {return center;}
 
     // 计算光线和包围盒的碰撞信息
-    bool Intersect(const Ray& ray, vec2* hitResult = nullptr) {
+    bool Intersect(const Ray& ray, vec2* hitResult = nullptr) const {
         float tMin = MIN, tMax = MAX;
 
         for (int i = 0; i < 3; ++i) {

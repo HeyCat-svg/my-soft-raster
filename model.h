@@ -7,8 +7,10 @@
 #include "tgaimage.h"
 #include "material.h"
 
+class Object;
 
 class Model {
+    friend class Object;
 private:
     std::vector<vec3> verts_;     // array of vertices
     std::vector<vec2> uv_;        // array of tex coords
@@ -30,7 +32,7 @@ public:
     vec2 uv(const int iface, const int nthvert) const;
 
     const BoundingBox3f& GetBoundingBox(int faceIdx) const;
-    const BoundingBox3f& GetBoundingBox() const;
+    const BoundingBox3f& GetBoundingBox() const;        // TODO: 需要换成模型的多边形凸包
 
     // 计算光线和模型的某个三角面片的交点 bar是重心坐标
     bool Intersect(int faceIdx, const Ray& ray, vec3& bar, float& t);

@@ -7,8 +7,8 @@
 class BRDFMaterial {
 public:
     // all the direction is point to outside from the fragment
-    virtual vec3 BRDF(const vec3& rayIn, const vec3& rayOut, const vec3& n) = 0;
-    virtual vec3 Emision(const vec3& rayOut, const float distance = -1) = 0;
+    virtual vec3 BRDF(const vec3& rayIn, const vec3& rayOut, const vec3& n) const = 0;
+    virtual vec3 Emision(const vec3& rayOut, const float distance = -1) const = 0;
 };
 
 
@@ -22,11 +22,11 @@ public:
         m_LightColor(lightColor), m_LightIntensity(lightIntensity)
     {}
 
-    virtual vec3 BRDF(const vec3& rayIn, const vec3& rayOut, const vec3& n) override {
+    virtual vec3 BRDF(const vec3& rayIn, const vec3& rayOut, const vec3& n) const override {
         return vec3(0, 0, 0);
     }
 
-    virtual vec3 Emision(const vec3& rayOut, const float distance = -1) override {
+    virtual vec3 Emision(const vec3& rayOut, const float distance = -1) const override {
         return m_LightColor * m_LightIntensity;
     }
 };
@@ -41,24 +41,24 @@ class OpaqueBRDF : BRDFMaterial {
     const vec4 m_ColorSpaceDielectricSpec = {0.04f, 0.04f, 0.04f, 1.f - 0.04f};
 
     // d90是垂直表面看材质的反照率
-    vec3 Schlick_F(vec3 d90, float NdotV) {
+    vec3 Schlick_F(vec3 d90, float NdotV) const {
         vec3 unit = vec3(1.f, 1.f, 1.f);
         return d90 + (unit - d90) * std::pow(1.f - NdotV, 5);
     }
 
-    float GGX_D(float roughness, float NdotH) {
+    float GGX_D(float roughness, float NdotH) const {
         float a2 = roughness * roughness;
         float d = NdotH * NdotH * (a2 - 1.f) + 1.f;
         return a2 / (PI * (d * d + 1e-7));
     }
 
-    float CookTorrence_G(float NdotL, float NdotV, float VdotH, float NdotH) {
+    float CookTorrence_G(float NdotL, float NdotV, float VdotH, float NdotH) const {
         float G1 = 2.f * NdotH * NdotV / VdotH;
         float G2 = 2.f * NdotH * NdotL / VdotH;
         return std::min(1.f, std::min(G1, G2));
     }
 
-    float DisneyDeffuse(float NdotV, float NdotL, float LdotH, float perceptualRoughness) {
+    float DisneyDiffuse(float NdotV, float NdotL, float LdotH, float perceptualRoughness) const {
         float fd90 = 0.5f + 2.f * LdotH * LdotH * perceptualRoughness;
         float lightScatter = 1.f + (fd90 - 1.f) * std::pow(1 - NdotL, 5);
         float viewScatter = 1.f + (fd90 - 1.f) * std::pow(1 - NdotV, 5);
@@ -72,7 +72,7 @@ public:
         m_Roughness = std::pow(1.f - smoothness, 2);
     }
 
-    virtual vec3 BRDF(const vec3& rayIn, const vec3& rayOut, const vec3& n) override {
+    virtual vec3 BRDF(const vec3& rayIn, const vec3& rayOut, const vec3& n) const override {
         vec3 halfDir = (rayIn + rayOut).normalize();
         float NdotL = clamp01(n * rayIn);
         float NdotH = clamp01(n * halfDir);
@@ -86,18 +86,16 @@ public:
         float oneMinusReflectivity = m_ColorSpaceDielectricSpec.w * (1.f - m_Metallicness);
         vec3 diffColor = oneMinusReflectivity * m_Albedo;
 
-        vec3 diff = diffColor * DisneyDeffuse(NdotV, NdotL, LdotH, 1.f - m_Smoothness);
+        vec3 diff = diffColor * DisneyDiffuse(NdotV, NdotL, LdotH, 1.f - m_Smoothness);
         float D = GGX_D(m_Roughness, NdotH);
         vec3 F = Schlick_F(specColor, NdotV);
         float G = CookTorrence_G(NdotL, NdotV, VdotH, NdotH);
         vec3 spec = (D * F * G) * PI / (4.f * (NdotL * NdotV));
 
-
-
-        return vec3(0, 0, 0);
+        return diff + spec;
     }
 
-    virtual vec3 Emision(const vec3& rayOut, const float distance = -1) override {
+    virtual vec3 Emision(const vec3& rayOut, const float distance = -1) const override {
         return vec3(0, 0, 0);
     }
 };
