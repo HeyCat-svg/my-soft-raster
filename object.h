@@ -13,7 +13,7 @@ class Object {
     BRDFMaterial* m_Material;           // 不需要obj来回收 记录了brdf函数
 
     BoundingBox3f m_ObjBoundingBox;                 // obj在空间的AABB包围盒
-    mat4x4 m_ModelMatrix, m_ModelMatrixInverse;     // local to world
+    mat4x4 m_ModelMatrix, m_ModelMatrixInverse;     // model->local to world
     vec3 m_T, m_R, m_S;                             // translate rotation scale
 
 public:
@@ -28,6 +28,7 @@ public:
     int nfaces() const;
     vec3 normal(const int iface, const int nthvert) const;
     vec3 vert(const int i) const;
+    vec3 vert(const int iface, const int nthvert) const;
     vec2 uv(const int iface, const int nthvert) const;
 };
 

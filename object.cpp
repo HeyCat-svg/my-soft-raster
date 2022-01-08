@@ -71,7 +71,7 @@ bool Object::Intersect(const Ray &ray, HitResult &hitResult, bool shadow) {
     // 首先将ray从world to local
     Ray localRay;
     localRay.origin = proj<3>(m_ModelMatrixInverse * embed<4>(ray.origin));
-    localRay.dir = proj<3>(m_ModelMatrixInverse * embed<4>(ray.dir, 0.f)).normalize();
+    localRay.dir = proj<3>(m_ModelMatrixInverse * embed<4>(ray.dir, 0.f));      // 不需要normalize 以保证t在local和world是一样的
 
     // 然后在local space碰撞检测
     if (m_AccelStruct->Intersect(localRay, hitResult, shadow)) {
@@ -87,5 +87,25 @@ bool Object::Intersect(const Ray &ray, HitResult &hitResult, bool shadow) {
 }
 
 int Object::nverts() const {
+    return m_Model->verts_.size();
+}
 
+int Object::nfaces() const {
+    return m_Model->facet_vrt_.size() / 3;
+}
+
+vec3 Object::normal(const int iface, const int nthvert) const {
+    return m_Model->norms_[m_Model->facet_nrm_[iface * 3 + nthvert]];
+}
+
+vec3 Object::vert(const int i) const {
+    return m_Model->verts_[i];
+}
+
+vec3 Object::vert(const int iface, const int nthvert) const {
+    return m_Model->verts_[m_Model->facet_vrt_[iface * 3 + nthvert]];
+}
+
+vec2 Object::uv(const int iface, const int nthvert) const {
+    return m_Model->uv_[m_Model->facet_tex_[iface * 3 + nthvert]];
 }

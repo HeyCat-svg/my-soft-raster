@@ -5,20 +5,21 @@
 #include "model.h"
 #include <vector>
 
-struct KDNode {
-    BoundingBox3f boundingBox;
-    std::vector<int> tris;
-    KDNode* left = nullptr;
-    KDNode* right = nullptr;
-
-    KDNode(BoundingBox3f _box, KDNode* _left = nullptr, KDNode* _right = nullptr) {
-        boundingBox = _box;
-        left = _left;
-        right = _right;
-    }
-};
 
 class Accel {
+    struct KDNode {
+        BoundingBox3f boundingBox;
+        std::vector<int> tris;
+        KDNode* left = nullptr;
+        KDNode* right = nullptr;
+
+        KDNode(BoundingBox3f _box, KDNode* _left = nullptr, KDNode* _right = nullptr) {
+            boundingBox = _box;
+            left = _left;
+            right = _right;
+        }
+    };
+
     Model* m_Mesh = nullptr;
 
 private:
