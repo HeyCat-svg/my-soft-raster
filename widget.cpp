@@ -2,11 +2,18 @@
 #include "skybox.h"
 
 // #define SOFT_RASTER
-#define RAY_TRACER
+// #define RAY_TRACER
+#define PATH_TRACER
 
 // "./obj/diablo3_pose/diablo3_pose.obj"
 // "./obj/cornell_box/cornell_box.obj"
 Model africanHeadModel("./obj/cornell_box/cornell_box.obj");
+
+std::vector<Model*> worldMesh;              // 全局model数组
+std::vector<Accel*> worldAccel;             // 与每一个model对应的加速结构
+std::vector<BRDFMaterial*> worldMaterial;   // 全局material数组
+World world;                                // 全局世界
+
 
 SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
     this->setParent(parent);
@@ -39,7 +46,7 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
 
     // 设置相机参数
     vec3 worldUp(0, 1, 0);
-    vec3 cameraPos(0.f, 0.f, 3.f);       // 0.5 0.5 2.5  -0.5 0.5 2.0
+    vec3 cameraPos(0.f, 0.f, 2.5f);       // 0.5 0.5 2.5  -0.5 0.5 2.0
     vec3 lookDir = vec3(0, 0, 0) - cameraPos;
     m_Camera = new Camera(cameraPos, lookDir, PI / 3.f, 1.f, 0.3f, 10.f);
 
@@ -55,14 +62,36 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
 
     // 设置光源数组
     ShaderLight lights[2];
-    lights[0] = {{-0.5f, 0.5f, 0.5f, 1.f}, {1, 1, 1}, 1.2f};
-    lights[1] = {{0.5f, 0.5f, 0.5f, 1.f}, {1, 1, 1}, 1.2f};
+    lights[0] = {{-0.5f, 0.5f, 0.5f, 1.f}, {0.8, 1, 1}, 0.7f};
+    lights[1] = {{0.5f, 0.5f, 0.5f, 1.f}, {1, 0.8, 1}, 0.7f};
     SetLightArray(lights, 2);
 
     // 初始化模型加速结构
     m_ModelAccel = new Accel(&africanHeadModel);
     m_ModelAccel->Build();
     qDebug() << "face number: " << africanHeadModel.nfaces();
+
+    // 加载model数组 初始化obj和world
+    worldMaterial.push_back(new OpaqueBRDF(vec3(0.4f, 0.5f, 0.6f), 0.4f, 0.4f));
+    worldMaterial.push_back(new OpaqueBRDF(vec3(0.7f, 0.7f, 0.7f), 0.0f, 0.0f));
+    worldMesh = Model::ModelReader("./obj/cornell_box/cornell_box.obj");
+    int size = worldMesh.size();
+    for (int i = 0; i < size; ++i) {
+        Accel* accel = new Accel(worldMesh[i]);
+        accel->Build();
+        worldAccel.push_back(accel);
+
+        // 使用mesh生成obj
+        if (worldMesh[i]->GetName().find("block") != std::string::npos) {
+            Object obj(worldMesh[i], accel, worldMaterial[0]);
+            world.AddObjects(obj);
+        }
+        else {
+            Object obj(worldMesh[i], accel, worldMaterial[1]);
+            world.AddObjects(obj);
+        }
+    }
+    world.Build();
 
     // 加载资源与生成shader
     TGAImage* diffuseImg = new TGAImage();
@@ -85,6 +114,7 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
     m_HBAOShader = new HBAOShader(&africanHeadModel, m_Zbuffer1, m_WindowWidth, m_WindowHeight);
     m_ZWriteShader = new ZWriteShader(&africanHeadModel);
     m_RayTracerShader = new RayTracerShader(&africanHeadModel, m_ModelAccel, skybox);
+    m_PathTracerShader = new PathTracerShader(&world, skybox);
 
     // start repaint timer
     m_RepaintTimer = startTimer(m_RepaintInterval);
@@ -104,9 +134,20 @@ SoftRaster::~SoftRaster() {
     delete m_HBAOShader;
     delete m_ZWriteShader;
     delete m_RayTracerShader;
+    delete m_PathTracerShader;
     delete m_ModelAccel;
     delete m_PointLight;
     delete m_Camera;
+
+    int size = worldMesh.size();
+    for (int i = 0; i < size; ++i) {
+        delete worldMesh[i];
+        delete worldAccel[i];
+    }
+    size = worldMaterial.size();
+    for (int i = 0; i < size; ++i) {
+        delete worldMaterial[i];
+    }
 }
 
 
@@ -226,6 +267,21 @@ void SoftRaster::paintEvent(QPaintEvent*) {
     }
 #endif
 ///////////////////////////////// RAY TRACER END ////////////////////////////
+
+///////////////////////////////// PATH TRACER START ////////////////////////////
+#ifdef PATH_TRACER
+    SetViewMatrix(m_Camera->GetViewMatrix());
+    SetProjectionMatrix(m_Camera->GetProjectionMatrix());
+    // 光栅化的步骤是为了插值ray 实际只有两个三角面片构成的长方形mesh
+    for (int i = 0; i < 2; ++i) {
+        vec4 clipPts[3];
+        for (int j = 0; j < 3; ++j) {
+            clipPts[j] = m_PathTracerShader->Vertex(i, j);
+        }
+        Triangle(clipPts, m_PathTracerShader, m_PixelBuffer, m_Zbuffer);
+    }
+#endif
+///////////////////////////////// PATH TRACER END ////////////////////////////
 
     // timer end
     QueryPerformanceCounter(&endTime);

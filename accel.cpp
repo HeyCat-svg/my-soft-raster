@@ -72,7 +72,7 @@ void Accel::Split(KDNode *node, int depth) {
     node->tris.shrink_to_fit();
 
     // 递归分裂左右子节点
-    m_LeafNum ++;
+    m_LeafNum++;
     m_NodeNum += 2;
     Split(node->left, depth + 1);
     Split(node->right, depth + 1);
@@ -124,6 +124,7 @@ void Accel::Clear(KDNode* node) {
     Clear(node->left);
     Clear(node->right);
     delete node;
+    node = nullptr;
 }
 
 void Accel::Clear() {

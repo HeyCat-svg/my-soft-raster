@@ -7,13 +7,14 @@
 class BRDFMaterial {
 public:
     // all the direction is point to outside from the fragment
+    virtual ~BRDFMaterial() = 0;
     virtual vec3 BRDF(const vec3& rayIn, const vec3& rayOut, const vec3& n) const = 0;
     virtual vec3 Emision(const vec3& rayOut, const float distance = -1) const = 0;
 };
 
 
 // TODO: 后续更新为光强随着距离而衰减
-class PointLightBRDF : BRDFMaterial {
+class PointLightBRDF : public BRDFMaterial {
     vec3 m_LightColor;
     float m_LightIntensity;
 
@@ -21,6 +22,8 @@ public:
     PointLightBRDF(vec3 lightColor, float lightIntensity) :
         m_LightColor(lightColor), m_LightIntensity(lightIntensity)
     {}
+
+    ~PointLightBRDF() {}
 
     virtual vec3 BRDF(const vec3& rayIn, const vec3& rayOut, const vec3& n) const override {
         return vec3(0, 0, 0);
@@ -31,7 +34,7 @@ public:
     }
 };
 
-class OpaqueBRDF : BRDFMaterial {
+class OpaqueBRDF : public BRDFMaterial {
     float m_Metallicness;
     float m_Smoothness;     // 百分比光滑度
     vec3 m_Albedo;          // 材质自身的反照率 但实际镜面高光颜色和diffuse颜色要根据metalness计算
@@ -71,6 +74,8 @@ public:
     {
         m_Roughness = std::pow(1.f - smoothness, 2);
     }
+
+    ~OpaqueBRDF() {}
 
     virtual vec3 BRDF(const vec3& rayIn, const vec3& rayOut, const vec3& n) const override {
         vec3 halfDir = (rayIn + rayOut).normalize();

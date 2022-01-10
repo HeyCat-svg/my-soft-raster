@@ -17,6 +17,7 @@ class Object {
     vec3 m_T, m_R, m_S;                             // translate rotation scale
 
 public:
+    Object() = default;
     Object(Model* model, Accel* accelStruct, BRDFMaterial* material,
            vec3 T=vec3(0, 0, 0), vec3 R=vec3(0, 0, 0), vec3 S=vec3(1, 1, 1));
     ~Object();

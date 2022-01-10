@@ -93,6 +93,10 @@ vec3 Model::normal(const int iface, const int nthvert) const {
     return norms_[facet_nrm_[iface*3+nthvert]];
 }
 
+const std::string& Model::GetName() {
+    return name;
+}
+
 const BoundingBox3f& Model::GetBoundingBox(int faceIdx) const {
     if (tri_bounding_box_[faceIdx] != nullptr) {
         return *(tri_bounding_box_[faceIdx]);
@@ -120,6 +124,22 @@ const BoundingBox3f& Model::GetBoundingBox() const {
     return model_bounding_box_;
 }
 
+void Model::InitBoundingBox() {
+    vec3 minVert(MAX, MAX, MAX);
+    vec3 maxVert(MIN, MIN, MIN);
+
+    int size = verts_.size();
+    for (int i = 0; i < size; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            minVert[j] = std::min(minVert[j], verts_[i][j]);
+            maxVert[j] = std::max(maxVert[j], verts_[i][j]);
+        }
+    }
+    model_bounding_box_ = BoundingBox3f(minVert, maxVert);
+    tri_bounding_box_ = new BoundingBox3f*[nfaces()];
+    memset(tri_bounding_box_, 0, sizeof(BoundingBox3f*) * nfaces());
+}
+
 // 见GAMES101 Lec13
 bool Model::Intersect(int faceIdx, const Ray& ray, vec3& bar, float& t) {
     vec3 verts[3];
@@ -144,4 +164,93 @@ bool Model::Intersect(int faceIdx, const Ray& ray, vec3& bar, float& t) {
     }
 
     return true;
+}
+
+std::vector<Model*> Model::ModelReader(const std::string filename) {
+    std::vector<vec3> verts;
+    std::vector<vec2> uv;
+    std::vector<vec3> norms;
+    std::vector<Model*> ret;
+    int vertIdxOffset = 1, uvIdxOffset = 1, normIdxOffset = 1;
+    Model* curModel = nullptr;      // 当前正在处理的obj
+
+    std::ifstream in;
+    in.open(filename, std::ifstream::in);
+    if (in.fail()) return ret;
+    std::string line;
+    while (!in.eof()) {
+        std::getline(in, line);
+        std::istringstream iss(line.c_str());
+        char trash;
+        if (!line.compare(0, 2, "v ")) {
+            iss >> trash;
+            vec3 v;
+            for (int i = 0; i < 3; ++i) {
+                iss >> v[i];
+            }
+            verts.push_back(v);
+        }
+        else if (!line.compare(0, 3, "vn ")) {
+            iss >> trash >> trash;
+            vec3 n;
+            for (int i = 0; i < 3; ++i) {
+                iss >> n[i];
+            }
+            norms.push_back(n.normalize());
+        }
+        else if (!line.compare(0, 3, "vt ")) {
+            iss >> trash >> trash;
+            vec2 _uv;
+            for (int i = 0; i < 2; ++i) {
+                iss >> _uv[i];
+            }
+            uv.push_back(_uv);
+        }
+        else if (!line.compare(0, 2, "o ")) {
+            iss >> trash;
+            if (curModel != nullptr) {
+                curModel->verts_ = std::vector<vec3>(verts.begin() + (vertIdxOffset - 1), verts.end());
+                curModel->uv_ = std::vector<vec2>(uv.begin() + (uvIdxOffset - 1), uv.end());
+                curModel->norms_ = std::vector<vec3>(norms.begin() + (normIdxOffset - 1), norms.end());
+                ret.push_back(curModel);
+                vertIdxOffset = verts.size() + 1;
+                uvIdxOffset = uv.size() + 1;
+                normIdxOffset = norms.size() + 1;
+            }
+            curModel = new Model();
+            iss >> curModel->name;
+        }
+        else if (!line.compare(0, 2, "f ")) {
+            int f, t, n;
+            iss >> trash;
+            int cnt = 0;
+            while (curModel != nullptr && (iss >> f >> trash >> t >> trash >> n)) {
+                curModel->facet_vrt_.push_back(f - vertIdxOffset);
+                curModel->facet_tex_.push_back(t - uvIdxOffset);
+                curModel->facet_nrm_.push_back(n - normIdxOffset);
+                cnt++;
+            }
+            if (3!=cnt) {
+                std::cerr << "Error: the obj file is supposed to be triangulated" << std::endl;
+                in.close();
+                return ret;
+            }
+        }
+    }
+    in.close();
+    // 把最后一个obj入栈
+    if (curModel != nullptr) {
+        curModel->verts_ = std::vector<vec3>(verts.begin() + (vertIdxOffset - 1), verts.end());
+        curModel->uv_ = std::vector<vec2>(uv.begin() + (uvIdxOffset - 1), uv.end());
+        curModel->norms_ = std::vector<vec3>(norms.begin() + (normIdxOffset - 1), norms.end());
+        ret.push_back(curModel);
+    }
+
+    // 初始化所有model的包围盒 三角面片包围盒数组分配内存
+    int size = ret.size();
+    for (int i = 0; i < size; ++i) {
+        ret[i]->InitBoundingBox();
+    }
+
+    return ret;
 }

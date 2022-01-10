@@ -6,6 +6,7 @@
 #include "model.h"
 #include "accel.h"
 #include "skybox.h"
+#include "world.h"
 #include <QRgb>
 #include <QImage>
 #include <cstdlib>
@@ -448,8 +449,103 @@ public:
         outColor = (255 << 24) | ((uint8_t)col[0] << 16) | ((uint8_t)col[1] << 8) | (uint8_t)col[2];
         return false;
     }
+};
+
+class PathTracerShader : public IShader {
+    const int MAX_DEPTH = 5;        // 光线追踪的最深递归深度 最多计算MAX_DEPTH次反射
+
+    vec3 screenMesh[2][3] = {
+        {{-1.f, 1.f, 1.f}, {-1.f, -1.f, 1.f}, {1.f, -1.f, 1.f}},
+        {{-1.f, 1.f, 1.f}, {1.f, -1.f, 1.f}, {1.f, 1.f, 1.f}}
+    };
+    float fov, aspect, halfWidth, halfHeight;
+    World* world;
+    Skybox* skybox;
+
+    struct v2f {
+        vec3 rayDir;
+    };
+
+    v2f vertOutput[3];
+
+    vec3 CastRay(const Ray& ray, int depth = 0) {
+        HitResult hitResult;
+        Object hitObject;
+
+        if (depth >= MAX_DEPTH || !world->Intersect(ray, hitResult, hitObject)) {
+            return vec3(0, 0, 0);
+            // return skybox->GetColor(ray.dir);   // 将来要替换成天空盒
+        }
+        int faceIdx = hitResult.hitIdx;
+        vec3 bar = hitResult.barycentric;
+        vec3 normal = {0, 0, 0};
+        vec3 worldPos = {0, 0, 0};
+        for (int i = 0; i < 3; ++i) {
+            normal = normal + bar[i] * hitObject.normal(faceIdx, i);
+            worldPos = worldPos + bar[i] * hitObject.vert(faceIdx, i);
+        }
+        normal.normalize();
+
+        // 随机在半球上选取一个方向 进行ray cast
 
 
+        // 开始计算当前光线碰撞点的颜色
+        const BRDFMaterial& material = hitObject.GetMaterial();
+        vec3 col(0, 0, 0);
+        int lightNum = LIGHTS.size();
+        vec3 viewDir = (-ray.dir).normalize();
+        for (int i = 0; i < lightNum; ++i) {
+            const ShaderLight& light = LIGHTS[i];
+            vec3 lightPos = embed<3>(light.lightPos);
+            vec3 lightDir = (light.lightPos.w == 0) ? lightPos : (lightPos - worldPos).normalize();
+            Ray lightRay(worldPos + lightDir * 1e-3, lightDir);
+            HitResult shadowHitResult;
+            Object trashObj;
+            if (world->Intersect(lightRay, shadowHitResult, trashObj, false) &&
+                    (shadowHitResult.hitPoint - worldPos).norm() < (lightPos - worldPos).norm()) {
+                continue;
+            }
+            col = col + clamp01(light.intensity * (normal * lightDir) * mul(light.lightColor, material.BRDF(lightDir, viewDir, normal)));
+        }
+        // 处理反射光线
+
+
+        return clamp01(col);
+    }
+
+public:
+    PathTracerShader(World* _world, Skybox* _skybox, float _fov=PI/3, float _aspect=1.f) :
+        world(_world), skybox(_skybox), fov(_fov), aspect(_aspect)
+    {
+        halfWidth = aspect * std::tan(fov / 2.f);
+        halfHeight = std::tan(fov / 2.f);
+    }
+
+    // 只是渲染长方形画面的两个三角形 中间的像素靠光栅化插值
+    virtual vec4 Vertex(int iface, int nthvert) override {
+        v2f o;
+        const vec3& meshP = screenMesh[iface][nthvert];
+        o.rayDir = vec3(meshP.x * halfWidth, meshP.y * halfHeight, -1.f);
+        // view的逆矩阵的逆转置矩阵就是view的转置->xxx 逆转置用于转换法向量的 将向量从view到world
+        o.rayDir = proj<3>(V_INVERSE_MATRIX * embed<4>(o.rayDir, 0)).normalize();
+        vertOutput[nthvert] = o;
+        return vec4(meshP.x, -meshP.y, meshP.z, 1.f);
+    }
+
+    virtual bool Fragment(vec3 barycentric, QRgb& outColor) override {
+        vec3 rayDir = {0, 0, 0};
+        for (int i = 0; i < 3; ++i) {
+            rayDir = rayDir + barycentric[i] * vertOutput[i].rayDir;
+        }
+        rayDir.normalize();
+        Ray ray(CAMERA_POS, rayDir);
+
+        vec3 col = CastRay(ray);
+        col = col * 255.f;
+
+        outColor = (255 << 24) | ((uint8_t)col[0] << 16) | ((uint8_t)col[1] << 8) | (uint8_t)col[2];
+        return false;
+    }
 };
 
 #endif // SHADER_H

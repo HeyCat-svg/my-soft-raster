@@ -23,18 +23,18 @@ class World {
 
 private:
     std::vector<Object> m_Objects;  // 该世界中含有的obj列表
+    KDNode* m_TreeRoot = nullptr;
     int m_MaxDepth = 0, m_LeafNum = 0, m_NodeNum = 0;
     int m_SplitTermination = 1;     // node的obj数量小于等于该数目时停止分裂
 
     void Split(KDNode* node, int depth);
     void Clear(KDNode* node);
-    bool IntersectHelper(const Ray& ray, KDNode* node, HitResult& hitResult, bool shadow);
+    bool IntersectHelper(const Ray& ray, KDNode* node, HitResult& hitResult, int& hitObjIdx, bool shadow);
 
 public:
     World();
-    void ReadObjects(const std::string filename);
     void AddObjects(const Object& obj);
-    void ClearObjects();                            // 删除加速结构
+    void ClearAccel();                              // 删除加速结构
     void Build();                                   // 重建加速结构
     bool Intersect(const Ray& ray, HitResult& hitResult, Object& hitObject, bool shadow = false);
     Object& GetObjectRef(int i);                    // 获取世界列表中某一个Obj的引用

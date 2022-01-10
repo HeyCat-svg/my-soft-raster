@@ -95,15 +95,15 @@ int Object::nfaces() const {
 }
 
 vec3 Object::normal(const int iface, const int nthvert) const {
-    return m_Model->norms_[m_Model->facet_nrm_[iface * 3 + nthvert]];
+    return proj<3>(m_ModelMatrix * embed<4>(m_Model->norms_[m_Model->facet_nrm_[iface * 3 + nthvert]], 0));
 }
 
 vec3 Object::vert(const int i) const {
-    return m_Model->verts_[i];
+    return proj<3>(m_ModelMatrix * embed<4>(m_Model->verts_[i]));
 }
 
 vec3 Object::vert(const int iface, const int nthvert) const {
-    return m_Model->verts_[m_Model->facet_vrt_[iface * 3 + nthvert]];
+    return proj<3>(m_ModelMatrix * embed<4>(m_Model->verts_[m_Model->facet_vrt_[iface * 3 + nthvert]]));
 }
 
 vec2 Object::uv(const int iface, const int nthvert) const {

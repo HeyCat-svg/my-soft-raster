@@ -19,6 +19,7 @@
 #include "camera.h"
 #include "monitor.h"
 #include "accel.h"
+#include "world.h"
 
 class SoftRaster : public QWidget {
     Q_OBJECT
@@ -43,6 +44,7 @@ private:
     IShader* m_HBAOShader = nullptr;
     IShader* m_ZWriteShader = nullptr;
     IShader* m_RayTracerShader = nullptr;
+    IShader* m_PathTracerShader = nullptr;
 
     Light* m_PointLight = nullptr;
     Camera* m_Camera = nullptr;
