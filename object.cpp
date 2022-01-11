@@ -27,6 +27,16 @@ Object::Object(Model* model, Accel* accelStruct, BRDFMaterial* material,
         maxPoint.z = std::max(boxPoint.z, maxPoint.z);
     }
     m_ObjBoundingBox = BoundingBox3f(minPoint, maxPoint);
+
+    // 计算光源信息 前提得是光源 目前仅支持四边形光源
+    if (m_Model->GetName().find("light") != std::string::npos) {
+        m_IsLight = true;
+        vec3 pts[3];
+        for (int i = 0; i < 3; ++i) {
+            pts[i] = proj<3>(m_ModelMatrix * embed<4>(m_Model->verts_[i]));
+        }
+        m_LightArea = (pts[0] - pts[1]).norm() * (pts[2] - pts[1]).norm();
+    }
 }
 
 Object::~Object() {
@@ -84,6 +94,11 @@ bool Object::Intersect(const Ray &ray, HitResult &hitResult, bool shadow) {
         return true;
     }
     return false;
+}
+
+bool Object::GetLight(float &lightArea) {
+    lightArea = m_LightArea;
+    return m_IsLight;
 }
 
 int Object::nverts() const {
