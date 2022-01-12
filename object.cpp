@@ -36,6 +36,9 @@ Object::Object(Model* model, Accel* accelStruct, BRDFMaterial* material,
             pts[i] = proj<3>(m_ModelMatrix * embed<4>(m_Model->verts_[i]));
         }
         m_LightArea = (pts[0] - pts[1]).norm() * (pts[2] - pts[1]).norm();
+        m_LightStartPointAndDir[0] = pts[0];
+        m_LightStartPointAndDir[1] = pts[1] - pts[0];
+        m_LightStartPointAndDir[2] = pts[2] - pts[1];
     }
 }
 
@@ -96,8 +99,17 @@ bool Object::Intersect(const Ray &ray, HitResult &hitResult, bool shadow) {
     return false;
 }
 
-bool Object::GetLight(float &lightArea) {
-    lightArea = m_LightArea;
+bool Object::GetLight(float &lightArea, vec3 (&lightStartPointAndDir)[3]) const {
+    if (m_IsLight) {
+        lightArea = m_LightArea;
+        for (int i = 0; i < 3; ++i) {
+            lightStartPointAndDir[i] = m_LightStartPointAndDir[i];
+        }
+    }
+    return m_IsLight;
+}
+
+bool Object::IsLight() {
     return m_IsLight;
 }
 

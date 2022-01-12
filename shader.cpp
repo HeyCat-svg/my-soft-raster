@@ -12,6 +12,7 @@ vec4 LIGHT0;
 std::vector<ShaderLight> LIGHTS;                   // 光源信息数组
 vec3 CAMERA_POS;
 vec4 _ProjectionParams;                      // x=1.0(或-1.0 表示y反转了) y=1/near z=1/far w=(1/far-1/near)
+vec2 RT_RESOLUTION;
 
 void SetModelMatrix(mat4x4& mat) {
     MODEL_MATRIX = mat;
@@ -74,6 +75,11 @@ void SetLightArray(const ShaderLight* lights, int n) {
     for (int i = 0; i < n; ++i) {
         LIGHTS.push_back(lights[i]);
     }
+}
+
+void SetRenderTargetResolution(int width, int height) {
+    RT_RESOLUTION[0] = width;
+    RT_RESOLUTION[1] = height;
 }
 
 vec3 NormalObjectToWorld(const vec3& n) {

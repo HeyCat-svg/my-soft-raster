@@ -9,7 +9,7 @@ public:
     // all the direction is point to outside from the fragment
     virtual ~BRDFMaterial() = 0;
     virtual vec3 BRDF(const vec3& rayIn, const vec3& rayOut, const vec3& n) const = 0;
-    virtual vec3 Emision(const vec3& rayOut, const float distance = -1) const = 0;
+    virtual vec3 Emision(const vec3& rayOut, float distance) const = 0;
 };
 
 
@@ -17,6 +17,7 @@ public:
 class PointLightBRDF : public BRDFMaterial {
     vec3 m_LightColor;
     float m_LightIntensity;
+    float m_ZeroPoint = 5.f;
 
 public:
     PointLightBRDF(vec3 lightColor, float lightIntensity) :
@@ -29,8 +30,13 @@ public:
         return vec3(0, 0, 0);
     }
 
-    virtual vec3 Emision(const vec3& rayOut, const float distance = -1) const override {
-        return m_LightColor * m_LightIntensity;
+    virtual vec3 Emision(const vec3& rayOut, float distance) const override {
+        vec3 zero(0, 0, 0);
+        if (distance > m_ZeroPoint) {
+            return zero;
+        }
+        float t = distance / m_ZeroPoint;
+        return lerp(m_LightIntensity * m_LightColor, zero, t * t);
     }
 };
 
@@ -100,7 +106,7 @@ public:
         return diff + spec;
     }
 
-    virtual vec3 Emision(const vec3& rayOut, const float distance = -1) const override {
+    virtual vec3 Emision(const vec3& rayOut, float distance) const override {
         return vec3(0, 0, 0);
     }
 };

@@ -30,7 +30,8 @@ extern mat4x4 VP_MATRIX;                            // proj * view
 extern vec4 LIGHT0;                                 // 向量或位置 区别在于w分量1or0
 extern std::vector<ShaderLight> LIGHTS;
 extern vec3 CAMERA_POS;
-extern vec4 _ProjectionParams;                       // x=1.0(或-1.0 表示y反转了) y=1/near z=1/far w=(1/far-1/near)
+extern vec4 _ProjectionParams;                      // x=1.0(或-1.0 表示y反转了) y=1/near z=1/far w=(1/far-1/near)
+extern vec2 RT_RESOLUTION;                          // resolution of render target [0]:width [1]:height
 
 void SetModelMatrix(mat4x4& mat);
 void SetViewMatrix(const mat4x4& mat);
@@ -38,6 +39,7 @@ void SetViewMatrix(const vec3& cameraPos, const mat4x4& lookAtMat);
 void SetProjectionMatrix(const mat4x4& mat);
 void SetCameraAndLight(vec3 cameraPos, vec4 light);
 void SetLightArray(const ShaderLight* lights, int n);
+void SetRenderTargetResolution(int width, int height);
 vec3 NormalObjectToWorld(const vec3& n);
 vec3 NormalObjectToView(const vec3& n);
 vec3 CoordNDCToView(const vec3& p);
@@ -452,7 +454,8 @@ public:
 };
 
 class PathTracerShader : public IShader {
-    const int MAX_DEPTH = 5;        // 光线追踪的最深递归深度 最多计算MAX_DEPTH次反射
+    const float SAMPLE_COUNT = 10;
+    const float RR_PROPABILITY = 0.8f;
 
     vec3 screenMesh[2][3] = {
         {{-1.f, 1.f, 1.f}, {-1.f, -1.f, 1.f}, {1.f, -1.f, 1.f}},
@@ -461,6 +464,7 @@ class PathTracerShader : public IShader {
     float fov, aspect, halfWidth, halfHeight;
     World* world;
     Skybox* skybox;
+    vec2 rayHalfJitter;             // 光线在一个像素中抖动的半长度
 
     struct v2f {
         vec3 rayDir;
@@ -468,49 +472,76 @@ class PathTracerShader : public IShader {
 
     v2f vertOutput[3];
 
-    vec3 CastRay(const Ray& ray, int depth = 0) {
-        HitResult hitResult;
-        Object hitObject;
+    inline float rand01() {
+        return std::rand() / (float)RAND_MAX;
+    }
 
-        if (depth >= MAX_DEPTH || !world->Intersect(ray, hitResult, hitObject)) {
-            return vec3(0, 0, 0);
-            // return skybox->GetColor(ray.dir);   // 将来要替换成天空盒
+    inline vec3 RandVecInHemisphere(vec3 n) {
+        float r1 = rand01();
+        float r2 = rand01();
+        vec3 ret;
+        ret.x = std::sqrt(r2 * (2.f - r2)) * std::cos(2.f * PI * r1);
+        ret.y = std::sqrt(r2 * (2.f - r2)) * std::sin(2.f * PI * r1);
+        ret.z = 1.f - r2;
+
+        // transfer to normal space
+        vec3 a;
+        if (std::abs(n.x) > 0.9f) {
+            a = vec3(0, 1, 0);
         }
-        int faceIdx = hitResult.hitIdx;
-        vec3 bar = hitResult.barycentric;
-        vec3 normal = {0, 0, 0};
-        vec3 worldPos = {0, 0, 0};
-        for (int i = 0; i < 3; ++i) {
-            normal = normal + bar[i] * hitObject.normal(faceIdx, i);
-            worldPos = worldPos + bar[i] * hitObject.vert(faceIdx, i);
+        else {
+            a = vec3(1, 0, 0);
         }
-        normal.normalize();
+        vec3 t = cross(a, n).normalize();
+        vec3 s = cross(t, n);
+        return ret.x * s + ret.y * t + ret.z * n;
+    }
 
-        // 随机在半球上选取一个方向 进行ray cast
+    vec3 Shade(vec3 worldPos, vec3 rayOut, vec3 normal, const BRDFMaterial& mat) {
+        // Contribution from the light source
+        vec3 L_dir(0, 0, 0);
+        const std::vector<WorldLight>& lights = world->GetLights();
+        int size = lights.size();
+        for (int i = 0; i < size; ++i) {
+            vec3 lightPos = lights[i].m_LightStartPointAndDir[0]
+                    + rand01() * lights[i].m_LightStartPointAndDir[1]
+                    + rand01() * lights[i].m_LightStartPointAndDir[2];
+            vec3 lightDir = lightPos - worldPos;
+            float lightDist = lightDir.norm();
+            lightDir = lightDir / lightDist;
 
-
-        // 开始计算当前光线碰撞点的颜色
-        const BRDFMaterial& material = hitObject.GetMaterial();
-        vec3 col(0, 0, 0);
-        int lightNum = LIGHTS.size();
-        vec3 viewDir = (-ray.dir).normalize();
-        for (int i = 0; i < lightNum; ++i) {
-            const ShaderLight& light = LIGHTS[i];
-            vec3 lightPos = embed<3>(light.lightPos);
-            vec3 lightDir = (light.lightPos.w == 0) ? lightPos : (lightPos - worldPos).normalize();
+            // check shadow
             Ray lightRay(worldPos + lightDir * 1e-3, lightDir);
-            HitResult shadowHitResult;
-            Object trashObj;
-            if (world->Intersect(lightRay, shadowHitResult, trashObj, false) &&
-                    (shadowHitResult.hitPoint - worldPos).norm() < (lightPos - worldPos).norm()) {
+            HitResult trashHitResult;
+            Object hitObj;
+            if (world->Intersect(lightRay, trashHitResult, hitObj) && !hitObj.IsLight()) {
                 continue;
             }
-            col = col + clamp01(light.intensity * (normal * lightDir) * mul(light.lightColor, material.BRDF(lightDir, viewDir, normal)));
+
+            // calculate direct light
+            vec3 lightRadiance = lights[i].m_LightMaterial->Emision(-lightDir, lightDist);
+            L_dir = L_dir + clamp01(normal * lightDir) * std::abs(lightDir * lights[i].m_LightNormal)
+                    / (lightDist * lightDist) * lights[i].m_LightAera * mul(lightRadiance, mat.BRDF(lightDir, rayOut, normal));
         }
-        // 处理反射光线
 
+        // Contribution from other reflection
+        vec3 L_indir(0, 0, 0);
+        if (rand01() <= RR_PROPABILITY) {
+            vec3 randVec = RandVecInHemisphere(normal);
+            Ray reflectRay(worldPos + normal * 1e-3, randVec);
+            HitResult hitResult;
+            Object hitObj;
+            if (world->Intersect(reflectRay, hitResult, hitObj) && !hitObj.IsLight()) {
+                vec3 hitNormal(0, 0, 0);    // 反射光线碰撞点的法向
+                for (int i = 0; i < 3; ++i) {
+                    hitNormal = hitNormal + hitResult.barycentric[i] * hitObj.normal(hitResult.hitIdx, i);
+                }
+                L_indir = (normal * randVec) * (2 * PI) / RR_PROPABILITY
+                        * mul(Shade(hitResult.hitPoint, -randVec, hitNormal, hitObj.GetMaterial()), mat.BRDF(randVec, rayOut, normal));
+            }
+        }
 
-        return clamp01(col);
+        return L_dir + L_indir;
     }
 
 public:
@@ -519,15 +550,20 @@ public:
     {
         halfWidth = aspect * std::tan(fov / 2.f);
         halfHeight = std::tan(fov / 2.f);
+
+        // init jitter
+        rayHalfJitter.x = halfWidth / RT_RESOLUTION.x;
+        rayHalfJitter.y = halfHeight / RT_RESOLUTION.y;
+
+        // init random seed
+        std::srand(std::time(0));
     }
 
     // 只是渲染长方形画面的两个三角形 中间的像素靠光栅化插值
     virtual vec4 Vertex(int iface, int nthvert) override {
         v2f o;
         const vec3& meshP = screenMesh[iface][nthvert];
-        o.rayDir = vec3(meshP.x * halfWidth, meshP.y * halfHeight, -1.f);
-        // view的逆矩阵的逆转置矩阵就是view的转置->xxx 逆转置用于转换法向量的 将向量从view到world
-        o.rayDir = proj<3>(V_INVERSE_MATRIX * embed<4>(o.rayDir, 0)).normalize();
+        o.rayDir = vec3(meshP.x * halfWidth, meshP.y * halfHeight, -1.f);   // 不需要normalize 因为需要对每个像素内的光线进行抖动
         vertOutput[nthvert] = o;
         return vec4(meshP.x, -meshP.y, meshP.z, 1.f);
     }
@@ -537,12 +573,34 @@ public:
         for (int i = 0; i < 3; ++i) {
             rayDir = rayDir + barycentric[i] * vertOutput[i].rayDir;
         }
-        rayDir.normalize();
-        Ray ray(CAMERA_POS, rayDir);
 
-        vec3 col = CastRay(ray);
-        col = col * 255.f;
+        vec3 col(0, 0, 0);
+        for (int sample = 0; sample < SAMPLE_COUNT; ++sample) {
+            vec3 rayDirJitter(rayDir.x + (2.f * rand01() - 1.f) * rayHalfJitter.x,
+                              rayDir.y + (2.f * rand01() - 1.f) * rayHalfJitter.y,
+                              rayDir.z);
+            rayDirJitter = proj<3>(V_INVERSE_MATRIX * embed<4>(rayDirJitter, 0)).normalize();
+            Ray ray(CAMERA_POS, rayDirJitter);
 
+            HitResult hitResult;
+            Object hitObj;
+            if (world->Intersect(ray, hitResult, hitObj)) {
+                // 光线与灯光直接碰撞
+                if (hitObj.IsLight()) {
+                    col = col + 1.f / SAMPLE_COUNT * hitObj.GetMaterial().Emision(-rayDirJitter, hitResult.t);
+                }
+                // 碰撞到非发光物
+                else {
+                    vec3 hitNormal(0, 0, 0);    // 反射光线碰撞点的法向
+                    for (int i = 0; i < 3; ++i) {
+                        hitNormal = hitNormal + hitResult.barycentric[i] * hitObj.normal(hitResult.hitIdx, i);
+                    }
+                    col = col + 1.f / SAMPLE_COUNT * Shade(hitResult.hitPoint, -rayDirJitter, hitNormal, hitObj.GetMaterial());
+                }
+            }
+        }
+
+        col = clamp01(col) * 255.f;
         outColor = (255 << 24) | ((uint8_t)col[0] << 16) | ((uint8_t)col[1] << 8) | (uint8_t)col[2];
         return false;
     }

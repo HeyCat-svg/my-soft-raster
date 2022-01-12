@@ -15,8 +15,10 @@ class Object {
     BoundingBox3f m_ObjBoundingBox;                 // obj在空间的AABB包围盒
     mat4x4 m_ModelMatrix, m_ModelMatrixInverse;     // model->local to world
     vec3 m_T, m_R, m_S;                             // translate rotation scale
+
     bool m_IsLight = false;                         // 通过model名字中是否包含light判断是否光源
     float m_LightArea = -1.f;                       // world space光源面积 只有在m_IsLight=true时有效
+    vec3 m_LightStartPointAndDir[3];                // [0]:start point [1],[2]:dir1,dir2
 
 public:
     Object() = default;
@@ -27,7 +29,8 @@ public:
     const BRDFMaterial& GetMaterial() const;
     const BoundingBox3f& GetBoundingBox() const;
     bool Intersect(const Ray& ray, HitResult& hitResult, bool shadow = false);
-    bool GetLight(float& lightArea);
+    bool GetLight(float& lightArea, vec3 (&lightStartPointAndDir)[3]) const;
+    bool IsLight();
 
     int nverts() const;
     int nfaces() const;

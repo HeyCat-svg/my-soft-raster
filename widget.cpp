@@ -66,13 +66,19 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
     lights[1] = {{0.5f, 0.5f, 0.5f, 1.f}, {1, 0.8, 1}, 0.7f};
     SetLightArray(lights, 2);
 
+    // 设置render target分辨率
+    SetRenderTargetResolution(m_WindowWidth, m_WindowHeight);
+
     // 初始化模型加速结构
     m_ModelAccel = new Accel(&africanHeadModel);
     m_ModelAccel->Build();
     qDebug() << "face number: " << africanHeadModel.nfaces();
 
     // 加载model数组 初始化obj和world
-    worldMaterial.push_back(new OpaqueBRDF(vec3(0.4f, 0.5f, 0.6f), 0.4f, 0.4f));
+    worldMaterial.push_back(new OpaqueBRDF(vec3(0.4f, 0.5f, 0.6f), 0.8f, 0.0f));
+    worldMaterial.push_back(new OpaqueBRDF(vec3(1.f, 0.f, 0.f), 0.0f, 0.0f));
+    worldMaterial.push_back(new OpaqueBRDF(vec3(0.f, 1.f, 0.f), 0.0f, 0.0f));
+    worldMaterial.push_back(new PointLightBRDF(vec3(1.f, 1.f, 1.f), 1.f));
     worldMaterial.push_back(new OpaqueBRDF(vec3(0.7f, 0.7f, 0.7f), 0.0f, 0.0f));
     worldMesh = Model::ModelReader("./obj/cornell_box/cornell_box.obj");
     int size = worldMesh.size();
@@ -86,8 +92,20 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
             Object obj(worldMesh[i], accel, worldMaterial[0]);
             world.AddObjects(obj);
         }
-        else {
+        else if (worldMesh[i]->GetName().find("light") != std::string::npos) {
+            Object obj(worldMesh[i], accel, worldMaterial[3]);
+            world.AddObjects(obj);
+        }
+        else if (worldMesh[i]->GetName().find("green_wall") != std::string::npos) {
+            Object obj(worldMesh[i], accel, worldMaterial[2]);
+            world.AddObjects(obj);
+        }
+        else if (worldMesh[i]->GetName().find("red_wall") != std::string::npos) {
             Object obj(worldMesh[i], accel, worldMaterial[1]);
+            world.AddObjects(obj);
+        }
+        else {
+            Object obj(worldMesh[i], accel, worldMaterial[4]);
             world.AddObjects(obj);
         }
     }
@@ -272,6 +290,7 @@ void SoftRaster::paintEvent(QPaintEvent*) {
 #ifdef PATH_TRACER
     SetViewMatrix(m_Camera->GetViewMatrix());
     SetProjectionMatrix(m_Camera->GetProjectionMatrix());
+    SetRenderTargetResolution(m_WindowWidth, m_WindowHeight);
     // 光栅化的步骤是为了插值ray 实际只有两个三角面片构成的长方形mesh
     for (int i = 0; i < 2; ++i) {
         vec4 clipPts[3];

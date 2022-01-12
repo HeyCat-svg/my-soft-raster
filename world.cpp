@@ -130,6 +130,12 @@ bool World::IntersectHelper(const Ray &ray, KDNode *node, HitResult &hitResult, 
 
 void World::AddObjects(const Object &obj) {
     m_Objects.emplace_back(obj);
+    WorldLight light;
+    if (obj.GetLight(light.m_LightAera, light.m_LightStartPointAndDir)) {
+        light.m_LightMaterial = &obj.GetMaterial();
+        light.m_LightNormal = cross(light.m_LightStartPointAndDir[1], light.m_LightStartPointAndDir[2]).normalize();
+        m_WorldLights.emplace_back(light);
+    }
 }
 
 void World::ClearAccel() {
@@ -178,4 +184,8 @@ Object& World::GetObjectRef(int i) {
         return m_Objects[i];
     }
     return m_Objects[0];
+}
+
+const std::vector<WorldLight>& World::GetLights() const {
+    return m_WorldLights;
 }
