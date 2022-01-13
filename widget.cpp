@@ -78,7 +78,7 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
     worldMaterial.push_back(new OpaqueBRDF(vec3(0.4f, 0.5f, 0.6f), 0.8f, 0.0f));
     worldMaterial.push_back(new OpaqueBRDF(vec3(1.f, 0.f, 0.f), 0.0f, 0.0f));
     worldMaterial.push_back(new OpaqueBRDF(vec3(0.f, 1.f, 0.f), 0.0f, 0.0f));
-    worldMaterial.push_back(new PointLightBRDF(vec3(1.f, 1.f, 1.f), 1.f));
+    worldMaterial.push_back(new PointLightBRDF(vec3(1.f, 1.f, 1.f), 15.f));
     worldMaterial.push_back(new OpaqueBRDF(vec3(0.7f, 0.7f, 0.7f), 0.0f, 0.0f));
     worldMesh = Model::ModelReader("./obj/cornell_box/cornell_box.obj");
     int size = worldMesh.size();

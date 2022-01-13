@@ -455,7 +455,7 @@ public:
 
 class PathTracerShader : public IShader {
     const float SAMPLE_COUNT = 10;
-    const float RR_PROPABILITY = 0.8f;
+    const float RR_PROPABILITY = 0.5f;
 
     vec3 screenMesh[2][3] = {
         {{-1.f, 1.f, 1.f}, {-1.f, -1.f, 1.f}, {1.f, -1.f, 1.f}},
@@ -473,7 +473,7 @@ class PathTracerShader : public IShader {
     v2f vertOutput[3];
 
     inline float rand01() {
-        return std::rand() / (float)RAND_MAX;
+        return std::rand() / (float)(RAND_MAX + 1.f);
     }
 
     inline vec3 RandVecInHemisphere(vec3 n) {
@@ -536,6 +536,7 @@ class PathTracerShader : public IShader {
                 for (int i = 0; i < 3; ++i) {
                     hitNormal = hitNormal + hitResult.barycentric[i] * hitObj.normal(hitResult.hitIdx, i);
                 }
+                hitNormal.normalize();
                 L_indir = (normal * randVec) * (2 * PI) / RR_PROPABILITY
                         * mul(Shade(hitResult.hitPoint, -randVec, hitNormal, hitObj.GetMaterial()), mat.BRDF(randVec, rayOut, normal));
             }
@@ -579,7 +580,7 @@ public:
             vec3 rayDirJitter(rayDir.x + (2.f * rand01() - 1.f) * rayHalfJitter.x,
                               rayDir.y + (2.f * rand01() - 1.f) * rayHalfJitter.y,
                               rayDir.z);
-            rayDirJitter = proj<3>(V_INVERSE_MATRIX * embed<4>(rayDirJitter, 0)).normalize();
+            rayDirJitter = proj<3>(V_INVERSE_MATRIX * embed<4>(rayDir, 0)).normalize();
             Ray ray(CAMERA_POS, rayDirJitter);
 
             HitResult hitResult;
@@ -587,7 +588,7 @@ public:
             if (world->Intersect(ray, hitResult, hitObj)) {
                 // 光线与灯光直接碰撞
                 if (hitObj.IsLight()) {
-                    col = col + 1.f / SAMPLE_COUNT * hitObj.GetMaterial().Emision(-rayDirJitter, hitResult.t);
+                    col = col + hitObj.GetMaterial().Emision(-rayDirJitter, hitResult.t);
                 }
                 // 碰撞到非发光物
                 else {
@@ -595,10 +596,12 @@ public:
                     for (int i = 0; i < 3; ++i) {
                         hitNormal = hitNormal + hitResult.barycentric[i] * hitObj.normal(hitResult.hitIdx, i);
                     }
-                    col = col + 1.f / SAMPLE_COUNT * Shade(hitResult.hitPoint, -rayDirJitter, hitNormal, hitObj.GetMaterial());
+                    hitNormal.normalize();
+                    col = col + Shade(hitResult.hitPoint, -rayDirJitter, hitNormal, hitObj.GetMaterial());
                 }
             }
         }
+        col = col / SAMPLE_COUNT;
 
         col = clamp01(col) * 255.f;
         outColor = (255 << 24) | ((uint8_t)col[0] << 16) | ((uint8_t)col[1] << 8) | (uint8_t)col[2];

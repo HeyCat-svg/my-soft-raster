@@ -36,7 +36,7 @@ private:
     float* m_Zbuffer = nullptr;
     float* m_Zbuffer1 = nullptr;
 
-    int m_RepaintInterval = 10000;    // ms
+    int m_RepaintInterval = 5000;    // ms
     int m_RepaintTimer;
 
     IShader* m_Shader = nullptr;
