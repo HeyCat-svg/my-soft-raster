@@ -454,8 +454,8 @@ public:
 };
 
 class PathTracerShader : public IShader {
-    const float SAMPLE_COUNT = 10;
-    const float RR_PROPABILITY = 0.5f;
+    const float SAMPLE_COUNT = 100;
+    const float RR_PROPABILITY = 0.8f;
 
     vec3 screenMesh[2][3] = {
         {{-1.f, 1.f, 1.f}, {-1.f, -1.f, 1.f}, {1.f, -1.f, 1.f}},
@@ -511,7 +511,8 @@ class PathTracerShader : public IShader {
             lightDir = lightDir / lightDist;
 
             // check shadow
-            Ray lightRay(worldPos + lightDir * 1e-3, lightDir);
+            Ray lightRay((lightDir * normal > 0) ? worldPos + normal * 1e-4 : worldPos - normal * 1e-4,
+                         lightDir);
             HitResult trashHitResult;
             Object hitObj;
             if (world->Intersect(lightRay, trashHitResult, hitObj) && !hitObj.IsLight()) {
@@ -528,7 +529,7 @@ class PathTracerShader : public IShader {
         vec3 L_indir(0, 0, 0);
         if (rand01() <= RR_PROPABILITY) {
             vec3 randVec = RandVecInHemisphere(normal);
-            Ray reflectRay(worldPos + normal * 1e-3, randVec);
+            Ray reflectRay(worldPos + normal * 1e-4, randVec);
             HitResult hitResult;
             Object hitObj;
             if (world->Intersect(reflectRay, hitResult, hitObj) && !hitObj.IsLight()) {
@@ -556,6 +557,8 @@ public:
         rayHalfJitter.x = halfWidth / RT_RESOLUTION.x;
         rayHalfJitter.y = halfHeight / RT_RESOLUTION.y;
 
+        qDebug() << '[' << rayHalfJitter.x << ',' << rayHalfJitter.y << ']';
+
         // init random seed
         std::srand(std::time(0));
     }
@@ -580,7 +583,7 @@ public:
             vec3 rayDirJitter(rayDir.x + (2.f * rand01() - 1.f) * rayHalfJitter.x,
                               rayDir.y + (2.f * rand01() - 1.f) * rayHalfJitter.y,
                               rayDir.z);
-            rayDirJitter = proj<3>(V_INVERSE_MATRIX * embed<4>(rayDir, 0)).normalize();
+            rayDirJitter = proj<3>(V_INVERSE_MATRIX * embed<4>(rayDirJitter, 0)).normalize();
             Ray ray(CAMERA_POS, rayDirJitter);
 
             HitResult hitResult;
@@ -588,7 +591,7 @@ public:
             if (world->Intersect(ray, hitResult, hitObj)) {
                 // 光线与灯光直接碰撞
                 if (hitObj.IsLight()) {
-                    col = col + hitObj.GetMaterial().Emision(-rayDirJitter, hitResult.t);
+                    col = col + clamp01(hitObj.GetMaterial().Emision(-rayDirJitter, hitResult.t));
                 }
                 // 碰撞到非发光物
                 else {
@@ -597,13 +600,13 @@ public:
                         hitNormal = hitNormal + hitResult.barycentric[i] * hitObj.normal(hitResult.hitIdx, i);
                     }
                     hitNormal.normalize();
-                    col = col + Shade(hitResult.hitPoint, -rayDirJitter, hitNormal, hitObj.GetMaterial());
+                    col = col + clamp01(Shade(hitResult.hitPoint, -rayDirJitter, hitNormal, hitObj.GetMaterial()));
                 }
             }
         }
         col = col / SAMPLE_COUNT;
 
-        col = clamp01(col) * 255.f;
+        col = col * 255.f;
         outColor = (255 << 24) | ((uint8_t)col[0] << 16) | ((uint8_t)col[1] << 8) | (uint8_t)col[2];
         return false;
     }

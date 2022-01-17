@@ -1,9 +1,10 @@
 #include "widget.h"
 #include "skybox.h"
 
+// #define CLEAR_RT
 // #define SOFT_RASTER
 // #define RAY_TRACER
-#define PATH_TRACER
+// #define PATH_TRACER
 
 // "./obj/diablo3_pose/diablo3_pose.obj"
 // "./obj/cornell_box/cornell_box.obj"
@@ -89,23 +90,23 @@ SoftRaster::SoftRaster(QWidget *parent) : QWidget(parent) {
 
         // 使用mesh生成obj
         if (worldMesh[i]->GetName().find("block") != std::string::npos) {
-            Object obj(worldMesh[i], accel, worldMaterial[0]);
+            Object obj(worldMesh[i], accel, worldMaterial[0], vec3(0, 0, 0), vec3(0, 0, 0), vec3(1.f, 1.f, 1.f));
             world.AddObjects(obj);
         }
         else if (worldMesh[i]->GetName().find("light") != std::string::npos) {
-            Object obj(worldMesh[i], accel, worldMaterial[3]);
+            Object obj(worldMesh[i], accel, worldMaterial[3], vec3(0, 0, 0), vec3(0, 0, 0), vec3(1.f, 1.f, 1.f));
             world.AddObjects(obj);
         }
         else if (worldMesh[i]->GetName().find("green_wall") != std::string::npos) {
-            Object obj(worldMesh[i], accel, worldMaterial[2]);
+            Object obj(worldMesh[i], accel, worldMaterial[2], vec3(0, 0, 0), vec3(0, 0, 0), vec3(1.f, 1.f, 1.f));
             world.AddObjects(obj);
         }
         else if (worldMesh[i]->GetName().find("red_wall") != std::string::npos) {
-            Object obj(worldMesh[i], accel, worldMaterial[1]);
+            Object obj(worldMesh[i], accel, worldMaterial[1], vec3(0, 0, 0), vec3(0, 0, 0), vec3(1.f, 1.f, 1.f));
             world.AddObjects(obj);
         }
         else {
-            Object obj(worldMesh[i], accel, worldMaterial[4]);
+            Object obj(worldMesh[i], accel, worldMaterial[4], vec3(0, 0, 0), vec3(0, 0, 0), vec3(1.f, 1.f, 1.f));
             world.AddObjects(obj);
         }
     }
@@ -181,6 +182,7 @@ void SoftRaster::paintEvent(QPaintEvent*) {
     QueryPerformanceFrequency(&cpuFreq);
     QueryPerformanceCounter(&startTime);
 
+#ifdef CLEAR_RT
     // clear image with black and clear depth buffer
     QRgb bgColor = 255 << 24;
 #pragma omp parallel for
@@ -193,6 +195,7 @@ void SoftRaster::paintEvent(QPaintEvent*) {
             m_AOMap[i * m_WindowWidth + j] = bgColor;
         }
     }
+#endif
 
 ///////////////////////////////////////// SOFT RASTER START ////////////////////////////
 #ifdef SOFT_RASTER
@@ -428,4 +431,47 @@ vec3 SoftRaster::Barycentric(vec2 *pts, vec2 p) {
     return vec3(1.f - (ret.x + ret.y) / ret.z, ret.x / ret.z, ret.y / ret.z);
 }
 
+void SoftRaster::GenerateImage() {
+     QImage image((uchar*)m_PixelBuffer, m_WindowWidth, m_WindowHeight, QImage::Format_ARGB32);
+
+     // timer start
+     LARGE_INTEGER cpuFreq;
+     LARGE_INTEGER startTime;
+     LARGE_INTEGER endTime;
+     double runtime = 0.0;
+     QueryPerformanceFrequency(&cpuFreq);
+     QueryPerformanceCounter(&startTime);
+
+     // clear image with black and clear depth buffer
+     QRgb bgColor = 255 << 24;
+ #pragma omp parallel for
+     for (int i = 0; i < m_WindowHeight; ++i) {
+         for (int j = 0; j < m_WindowWidth; ++j) {
+             m_PixelBuffer[i * m_WindowWidth + j] = bgColor;
+             m_Zbuffer[i * m_WindowWidth + j] = Z_MIN;
+             m_Zbuffer1[i * m_WindowWidth + j] = Z_MIN;
+             m_ShadowMap[i * m_WindowWidth + j] = bgColor;
+             m_AOMap[i * m_WindowWidth + j] = bgColor;
+         }
+     }
+
+     SetViewMatrix(m_Camera->GetViewMatrix());
+     SetProjectionMatrix(m_Camera->GetProjectionMatrix());
+     SetRenderTargetResolution(m_WindowWidth, m_WindowHeight);
+     // 光栅化的步骤是为了插值ray 实际只有两个三角面片构成的长方形mesh
+     for (int i = 0; i < 2; ++i) {
+         vec4 clipPts[3];
+         for (int j = 0; j < 3; ++j) {
+             clipPts[j] = m_PathTracerShader->Vertex(i, j);
+         }
+         Triangle(clipPts, m_PathTracerShader, m_PixelBuffer, m_Zbuffer);
+     }
+
+     // timer end
+     QueryPerformanceCounter(&endTime);
+     runtime = (((endTime.QuadPart - startTime.QuadPart) * 1000.0f) / cpuFreq.QuadPart);
+     qDebug() << "runtime: " << runtime << "ms";
+
+     image.save("./img/ray_tracer/result.png");
+}
 
