@@ -46,10 +46,10 @@ class OpaqueBRDF : public BRDFMaterial {
     vec3 m_Albedo;          // 材质自身的反照率 但实际镜面高光颜色和diffuse颜色要根据metalness计算
 
     float m_Roughness;      // (1-smoothness)^2
-    // 当金属度为0的时候的d90 即镜面高光颜色 金属度越高高光颜色越接近mainTex本色
+    // 当金属度为0的时候的f0 即垂直看表面的光反射率 可以看成镜面高光 金属度越高高光颜色越接近mainTex本色
     const vec4 m_ColorSpaceDielectricSpec = {0.04f, 0.04f, 0.04f, 1.f - 0.04f};
 
-    // d90是垂直表面看材质的反照率
+    // d90是垂直表面看材质的反照率(应该写成f0)
     vec3 Schlick_F(vec3 d90, float NdotV) const {
         vec3 unit = vec3(1.f, 1.f, 1.f);
         return d90 + (unit - d90) * std::pow(1.f - NdotV, 5);
